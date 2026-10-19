@@ -102,8 +102,8 @@ deny_file="$here/agent/scripts/private-names.txt"
 [ -f "$deny_file" ] || { echo "mirror-config: no deny list at $deny_file" >&2; exit 1; }
 # Two entry kinds (see the file's header). A plain name matches with `-`, `_` and
 # a space interchangeable; a `ctx:` name only matches in a repo-shaped context,
-# so the ordinary words `crm`, `spectro` and `monet` do not fire on a CRM product
-# category or the word "spectrograph".
+# so a listed name that is also an ordinary word does not fire on that word in
+# prose (a product category, a longer word that contains it).
 #
 # ERE escaping happens FIRST, then the separator fold. Escaping after folding
 # breaks the fold's own `[-_ ]` class (`[` becomes `\[`), which the self-probe
@@ -115,16 +115,17 @@ plain="$(grep -vE '^[[:space:]]*(#|$)' "$deny_file" | grep -v '^ctx:' | esc | fo
 ctx="$(grep '^ctx:' "$deny_file" | sed 's/^ctx://' | esc | fold | paste -sd'|' -)"
 # The GitHub owner every name in the list belongs to, declared in the list's own
 # header (`# owner: <login>` — the login its regeneration command runs against).
-# It bounds the `owner/name` context: `dashboard/frontend` and `api/v1/chat` are
-# ordinary paths whose last segment happens to be a ctx name, and another owner's
-# `spectro` is not this list's concern. A missing declaration refuses to run
+# It bounds the `owner/name` context: an ordinary path whose last segment happens
+# to be a ctx name (`<dir>/<name>`) is not a repo, and another owner's repo of the
+# same name is not this list's concern. A missing declaration refuses to run
 # rather than quietly dropping a context the list's header promises.
 owner="$(sed -n 's/^#[[:space:]]*owner:[[:space:]]*\([A-Za-z0-9][A-Za-z0-9._-]*\)[[:space:]]*$/\1/p' "$deny_file" | head -1)"
 [ -n "$owner" ] || { echo "mirror-config: $deny_file declares no '# owner: <login>' line; the owner/name context cannot be built" >&2; exit 1; }
 owner_re="$(printf '%s' "$owner" | esc)"
 # A name character is [A-Za-z0-9._-]; `head` is what may precede a context and
 # `tail` what may follow the name. Both are enforced, so one entry cannot fire
-# inside a longer, unrelated name (`xomp-data`, `omp-data-science`).
+# inside a longer, unrelated name (`x<name>`, `<name>-science`). Examples here
+# never spell a listed name: this script is itself published (OMP-30).
 bnd='[^A-Za-z0-9._-]'
 head="(^|$bnd)"
 tail="(\.git($bnd|\$)|$bnd|\$)"
@@ -137,16 +138,17 @@ if [ -n "$ctx" ]; then
   #   ~/name, ~\name                                         a home checkout
   #   <owner>/name                                           the declared owner
   #   name.git                                               a clone URL (below)
-  # An earlier revision accepted `word/word`, which matched `marketing/frontend`,
-  # `api/v1/chat` and CSV prose (`UChatMessages`) (measured 2026-10-19), and it
-  # promised three forms it did not implement, so all three passed. This file is
-  # itself published, so the examples stay placeholders: a real ctx name written
-  # in one of these forms here makes the gate refuse its own tree.
+  # An earlier revision accepted `word/word`, which matched ordinary paths
+  # (`<dir>/<name>`, `<api>/<version>/<name>`) and CSV prose whose identifiers
+  # contain a listed word (measured 2026-10-19), and it promised three forms it
+  # did not implement, so all three passed. This file is itself published, so
+  # its examples stay placeholders and never spell a listed name, in or out of
+  # these forms (OMP-30).
   #
   # A bare `/name` is deliberately NOT a context, and the list's header does not
-  # promise one: it fires on `</template>` — a real line of
-  # `agent/skills/ui-ux-pro-max/data/stacks/nuxt-ui.csv` — and on `/frontend/` in
-  # ordinary prose (measured 2026-10-19 over the 742 published files).
+  # promise one: it fires on HTML closing tags and on ordinary path segments in a
+  # published data file and in prose (measured 2026-10-19 over the 742 published
+  # files).
   deny="$deny|${head}(github\.com[:/][A-Za-z0-9._-]+/|repos?[\\/]|~[\\/]|$owner_re/)($ctx)($tail)"
   deny="$deny|${head}($ctx)\.git($bnd|\$)"
 fi

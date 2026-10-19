@@ -54,10 +54,14 @@ The config is copied from this machine over SSH.
 
 ## Which to use
 
-- **git** for stable, committed config/memory you may deploy to several
-  targets — the OMP `example-config` / `example-data` case.
+- **git** for stable, committed config you may deploy to several targets — the
+  OMP `example-config` case. Git carries memory too, for a harness whose memory
+  is hand-written; where the harness generates it, memory is data, not config.
 - **local-copy** for machine-local config, WIP, or agents with no backup repo.
 - Mix per bucket: e.g. config from git, memory from local.
+- Memory a harness generates is in neither: OMP's tree is mirrored to R2 under
+  `omp/memories/` by `example-data` and no commit carries it, so a target that
+  needs it restores from object storage rather than from a clone.
 
 ## Resync rule
 

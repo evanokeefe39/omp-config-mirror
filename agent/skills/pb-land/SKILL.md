@@ -25,5 +25,6 @@ The todo is [`todo.json`](todo.json) beside this file: its phases and items, as 
 
 - Only PRs with a current `PASS`/`PASS+NOTES` verdict, or a recorded self-verified exception, were merged, each with `--squash`
 - Every merged PR's patch-id was re-checked after its final push
+- No merge ran while a check on the PR, or on any PR the stack would land, was failing or pending — the command guard refuses one, and refuses a merge whose check state it cannot read at all
 - Every task the run closed is `Done` on trunk, and nothing the run merged is left `For Review`
 - Reply: the verified run and its ceiling, each PR's verdict and who produced it (or the self-verified reason), the merge command used, what landed on trunk, what the next gap needs, and any milestone the run completed with the offered `run pb-release`.

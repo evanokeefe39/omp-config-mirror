@@ -20,7 +20,22 @@ const pi = {
 		handler = h;
 	},
 	appendEntry() {},
-	exec: async () => ({ stdout: "feature/x\n", code: 0 }),
+	// The merge gate reads the check state through `gh api graphql` and, when no
+	// selector is given, resolves the PR through `gh pr view`. Both answer green
+	// here, so a case about branch naming or the merge-method rule is never
+	// decided by the gate rather than by the check under test.
+	exec: async (_cmd: string, args: string[]) => {
+		if (args[0] === "pr" && args[1] === "view") return { stdout: "42", code: 0 };
+		if (args[0] !== "api") return { stdout: "feature/x\n", code: 0 };
+		const num = Number(args.find((a) => a.startsWith("num="))?.slice(4) ?? 42);
+		const green = { number: num, statusCheckRollup: { state: "SUCCESS" } };
+		return {
+			stdout: JSON.stringify({
+				data: { repository: { pullRequest: { ...green, stack: { entries: { nodes: [{ pullRequest: green }] } } } } },
+			}),
+			code: 0,
+		};
+	},
 };
 
 hook(pi as never);

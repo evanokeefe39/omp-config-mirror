@@ -46,6 +46,12 @@
 #   * a failing run exits non-zero; a deliberate skip exits 0 and says why;
 #   * exit 3 marks dirty CODE paths — edits that exist on this machine only.
 #     Nothing is staged either way; the report is the point.
+#   * exit 4 marks a red data-sync staleness sensor: the machine's daily data job
+#     has not completed inside its window, ended red, or left no readable record.
+#     That is a report about another job, not a failure of this one — its own
+#     coverage check runs inside it, so a run that never starts reports nothing
+#     anywhere (OMP-6). Dirty CODE wins when both hold: a run carries one report
+#     code, and the local edit is the one only this machine knows about.
 #
 # WHAT COUNTS AS A FAILURE: that it could not do its job — no remote, fetch
 # failed, fast-forward failed, or an index left unmerged. A conflict is the one
@@ -205,9 +211,11 @@ ahead_count() {
   fi
 }
 
-# Counted over an explicit list, not the whole tree: thousands of tracked memory
-# files sit in `agent/memories` and are rewritten by every consolidation run, so a
-# whole-tree count would report a number that says nothing about the harness.
+# Counted over an explicit list, not the whole tree: the two lists have to be
+# told apart — CODE dirt exits 3, ALLOW dirt is only reported — and a whole-tree
+# count cannot do that. The generated memory tree is not tracked here at all
+# (`/agent/memories/` is ignored and example-data mirrors it to R2), so it no
+# longer contributes to the count either way.
 dirty_count() { git -C "$REPO" status --porcelain -- "$@" 2>/dev/null | wc -l | tr -d ' '; }
 
 # Unmerged index entries, one path per line: the `UU`/`AA`/`DD`/`AU`/`UA`/`DU`/`UD`
@@ -281,8 +289,32 @@ report_unreviewed_code() {
   return 3
 }
 
+# The sibling job's staleness. The machine's daily data job runs on a different
+# schedule, and its coverage check runs INSIDE it, so a run that never starts
+# reports nothing anywhere — the failure OMP-6 exists for. This job already runs
+# daily and already reports the harness's own staleness, so it evaluates the
+# sibling's age through the same delivery path (a state file and a marker at the
+# repo root) rather than inventing a second one. The sensor's own exit code is its
+# verdict: 0 ok, 1 stale or red, 2 unknown. A missing sensor is reported and does
+# not flip this job's verdict: the two ship together, so that is a broken checkout,
+# and it must not read as green.
+DATA_SYNC_RC=0
+data_sync_report() {
+  local mode="$1" script="$REPO/agent/scripts/data-sync-staleness.sh" rc=0
+  if [ ! -f "$script" ]; then
+    echo "data-sync: NOT CHECKED — $script is missing" >&2
+    return 0
+  fi
+  # `|| rc=$?` so a red verdict does not trip this script's ERR trap: the sensor
+  # reporting a problem is the sensor working, not this job failing.
+  sh "$script" "$mode" || rc=$?
+  DATA_SYNC_RC="$rc"
+  return 0
+}
+
 print_report() {
-  local branch="$1" ahead="$2" behind="$3" behind_main="$4" updated="$5" skipped="$6"
+  local branch="$1" ahead="$2" behind="$3" behind_main="$4" updated="$5" skipped="$6" \
+        mode="${7:-status}"
   local successes; successes="$(last_stamp success)"
   echo "repo:     $REPO"
   echo "remote:   $(git remote get-url origin 2>/dev/null || echo '(none)')"
@@ -322,6 +354,9 @@ print_report() {
     echo "STALE:    no successful run on record" >&2
   fi
   [ -f "$MARKER" ] && echo "STALLED:  $MARKER exists — the last run failed" || true
+
+  # Last, so the harness's own state is read first and the sibling's follows it.
+  data_sync_report "$mode"
 }
 
 # Credential-shaped strings in what is uncommitted right now, counted for the
@@ -441,6 +476,11 @@ fi
 
 rm -f "$MARKER"
 write_status "ok" "" "$BRANCH" "$AHEAD" "$BEHIND" "$BEHIND_MAIN" "$UPDATED" "$SKIP"
-print_report "$BRANCH" "$AHEAD" "$BEHIND" "$BEHIND_MAIN" "$UPDATED" "$SKIP"
+print_report "$BRANCH" "$AHEAD" "$BEHIND" "$BEHIND_MAIN" "$UPDATED" "$SKIP" "run"
 report_unreviewed_code || exit $?
+# A red sibling sensor is the machine's alarm for a job that cannot raise its own
+# (OMP-6): exit 4, distinct from 3 (unreviewed code here) and from 1 (this job could
+# not do its job — a fetch or fast-forward failure). The sensor's own code says which
+# of stale (1), red (1) or unknown (2) it is, and the state file and marker carry it.
+[ "$DATA_SYNC_RC" -eq 0 ] || exit 4
 exit 0

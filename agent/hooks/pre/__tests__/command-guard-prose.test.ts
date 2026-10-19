@@ -39,8 +39,18 @@ const pi = {
 	appendEntry(type: string, data: unknown) {
 		records.push({ type, data });
 	},
-	// non-main branch, so branch discipline does not fire and CHECKS is reached
-	exec: async () => ({ stdout: "feat/x\n", code: 0 }),
+	// non-main branch, so branch discipline does not fire and CHECKS is reached.
+	// The merge gate reads the check state through `gh api graphql`: answer SUCCESS,
+	// so a case about the matcher is never decided by an unreadable check state.
+	exec: async (_cmd: string, args: string[]) =>
+		args[0] === "api"
+			? {
+					stdout: JSON.stringify({
+						data: { repository: { pullRequest: { number: 2, statusCheckRollup: { state: "SUCCESS" } } } },
+					}),
+					code: 0,
+				}
+			: { stdout: "feat/x\n", code: 0 },
 };
 
 hook(pi as never);

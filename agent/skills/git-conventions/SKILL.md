@@ -70,8 +70,10 @@ Agent-Identity: harness=omp-config-mirror@omp-home-v0.5.0 omp=18.6.0 model=claud
   commands, extensions, scripts, agent definitions, config and release files, and
   nothing else — to the mirror
   [omp-config-mirror](https://github.com/evanokeefe39/omp-config-mirror) under the
-  same tag, by `agent/scripts/mirror-config.sh` and
-  `.github/workflows/mirror-config.yml` on the tag push. So
+  same tag, by `agent/scripts/mirror-config.sh`, which
+  `.github/workflows/mirror-config.yml` runs as a job of the release-please run
+  that created the tag (a tag made with GITHUB_TOKEN starts no workflow of its
+  own, so a `push: tags` trigger never fires for it — OMP-30). So
   `omp-config-mirror@omp-home-v0.5.0` is a URL plus a tag. The mirror is intended
   to be public but is currently private pending re-publicisation (OMP-26), so the
   URL does not resolve for a reader yet.

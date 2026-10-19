@@ -1,3 +1,7 @@
+---
+description: A change that deletes must re-read the registers. Before a change that removes a symbol, a surface, an event, a config key or a module is declared done, grep VERIFY.md and FEEDBACK.md for every name being deleted and repoint, retire or narrow each hit — a row naming deleted code certifies a check nobody runs.
+---
+
 # A change that deletes must re-read the registers
 
 A register — `VERIFY.md`, `FEEDBACK.md` — is a claim about what the code does. When

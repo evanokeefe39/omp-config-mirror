@@ -84,9 +84,11 @@ backlog config set remoteOperations false
 - Set the board's columns and add the kind and domain labels below by editing
   `backlog/config.yml` (upstream's documented route: `statuses` and `labels`
   cannot be set with `backlog config set`): `statuses: ["To Do", "In Progress",
-  "For Review", "Done"]` (`### Statuses` below), and the labels under `labels:` so
-  the web UI offers them. Task labels are free-form, so the list is a suggestion,
-  not a check.
+  "For Review", "Done"]` (`### Statuses` below), the labels under `labels:` so
+  the web UI offers them, and the kind list under `types:` (`types: ["bugfix",
+  "feature", …, "content"]`, the `kind` table below) so a card's kind can be its
+  type. Task labels are free-form, so the label list is a suggestion, not a check;
+  `--type` is checked against `types`.
 - Create the standing milestone: `backlog milestone add maintenance -d "Unplanned
   fixes and upkeep that serve no open goal; never archived, ships under the release
   time cap."` (`### Releases and milestones`).
@@ -105,8 +107,12 @@ backlog config set remoteOperations false
   confirm the fields landed.
 - **Title**: imperative, names the behaviour — `Handle null cursor in page
   fetch`, not `Bug in API`.
-- **Labels: exactly one `kind` and one `domain`** (tables below). Nothing
-  enforces one-of-each, so read the task back.
+- **Labels: exactly one `kind` and one `domain`** (tables below), **and the
+  `type` field set to the same kind** (`--type <kind>`). The board shows the type
+  as the card's coloured badge beside its ID, and labels only as plain chips under
+  the title, so a kind kept only in a label does not read as the card's kind
+  (omp-home, 2026-10-19: 32 of 33 cards had no type, raised by the user). Nothing
+  enforces one-of-each or the label and type agreeing, so read the task back.
 - **Description** says the outcome and why; **acceptance criteria** (`--ac`,
   repeatable) are specific, testable and independent. No implementation plan at
   creation for future work: the plan is written when work starts (`--plan`),

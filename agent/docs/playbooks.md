@@ -137,7 +137,7 @@ The why behind the router's shape (observe-only, riding native events, no regist
 
 ### playbook-probe (removed)
 
-`extensions/playbook-probe/index.ts` was an observe-only extension for the router's phase 0. It wrote one JSON line per observed event to `playbook-probe/events.jsonl`. The router's archived WP1 plan used it to answer the spec's open omp-API questions and ends with "Remove the probe." (`router:tasks/plans/archive/playbook-router.md:40-48`). It was not removed then, and was still writing on 2026-10-17, when the file had reached 1,119,269,677 bytes. The extension was deleted with the router uninstall on 2026-10-17. Its `events.jsonl` is observed data: it stays on disk and stays gitignored (`.gitignore:84`) until someone decides to archive or delete it.
+`extensions/playbook-probe/index.ts` was an observe-only extension for the router's phase 0. It wrote one JSON line per observed event to `playbook-probe/events.jsonl`. The router's archived WP1 plan used it to answer the spec's open omp-API questions and ends with "Remove the probe." (`router:tasks/plans/archive/playbook-router.md:40-48`). It was not removed then, and was still writing on 2026-10-17, when the file had reached 1,119,269,677 bytes. The extension was deleted with the router uninstall on 2026-10-17. Its `events.jsonl` is observed data: it stays on disk and stays gitignored (`.gitignore:88`) until someone decides to archive or delete it.
 
 ## Domain binding
 
@@ -157,7 +157,7 @@ Why pairs: IMPROVEMENTS 2026-10-01 "domain engineer/reviewer pairs replace the g
 
 | check | what it checks | state on 2026-10-11 |
 |---|---|---|
-| `scripts/lint-playbooks.ts` | sidecar shape through the router's own `phasesFromSidecar`; the four `SKILL.md` sections with `Not:` and `Reply:`; every role names an agent in `agents/` or a bundled one (`main`, `task`, `scout`, `reviewer`, `security-reviewer`, `sonic`); every `run pb-X` resolves; no duplicated item text (`scripts/lint-playbooks.ts:7-18`). Exits 2 if the router parser cannot be imported (`:28-33`). | exit 0 when run by hand. Manual-only: the pre-commit gate has been commented out since 2026-10-09 (`VERIFY.md:38`; `~/.git-hooks/pre-commit:76-95`) |
+| the playbook router's `scripts/lint-playbooks.ts` | sidecar shape through the router's own `phasesFromSidecar`; the four `SKILL.md` sections with `Not:` and `Reply:`; every role names an agent in `agents/` or a bundled one (`main`, `task`, `scout`, `reviewer`, `security-reviewer`, `sonic`); every `run pb-X` resolves; no duplicated item text. A skills directory that is not there, or that holds no `pb-*` playbook, is reported rather than passed. The checks are listed in the file's own header (`router:scripts/lint-playbooks.ts`). | exit 0 when run by hand. Manual-only: the pre-commit gate has been commented out since 2026-10-09 (`~/.git-hooks/pre-commit:76-95`). It left this repo's `scripts/` for the repo that owns its parser on 2026-10-19 (OMP-28); the router's row in `VERIFY.md` runs it by its new path. The router repo is private, so this published page does not name it |
 | `scripts/playbook-index-check.py` | every `pb-*` directory is named in `WORKFLOWS.md`, and every `skills/<name>/` path the index names exists (`scripts/playbook-index-check.py:4-15`) | exit 0 (2026-10-13): all 16 playbooks indexed, all 39 indexed skills resolve — the dangling `harness-audit` row (exit 1 on 2026-10-11) was removed in SOLO-243 |
 
 Why the lint: the plan's U6 unit (`docs/playbook-refactor-plan.md:250-272`) moved authoring rules "that currently live in people's heads" into a check, and it landed in PR #27. IMPROVEMENTS 2026-10-09 "playbook pre-commit lint disabled (temporary)" turned the gate off because the playbooks were "about to be reworked for format and content", which made the lint's `Not:`, `Reply:` and role rules "stale by design". The follow-up is to re-arm the gate when the rework lands. The two 2026-10-11 label-taxonomy rows record "Lint exit 0" from manual runs.
@@ -226,7 +226,7 @@ The factory stamped nine `de-*` agents, and they still live in `~/repos/the data
 
 ### The refactor plan
 
-[playbook-refactor-plan.md](playbook-refactor-plan.md) was proposed in PR #24 (`7cfd624`) and implemented the same day in PR #27 (`8f1f8e6`): git precedence (U1), `pb-spec` and `pb-design` (U2), dissolving `pb-harness` (U3), proving surfaces moved into `VERIFY.md` (U5), `lint-playbooks.ts` (U6), and the data and app-backend designers (U7). U4's harness standards went into the existing `harness-engineering` skill instead of a new `harness-standards` skill. U6's lint does not compare `## Todo` headings with sidecar phases, because `## Todo` is now a one-line pointer. Until this doc landed, the plan's header still read "for approval, not implemented"; it now records the implementation.
+[playbook-refactor-plan.md](playbook-refactor-plan.md) was proposed in PR #24 (`7cfd624`) and implemented the same day in PR #27 (`8f1f8e6`): git precedence (U1), `pb-spec` and `pb-design` (U2), dissolving `pb-harness` (U3), proving surfaces moved into `VERIFY.md` (U5), `lint-playbooks.ts` (U6, moved to the playbook router's repo on 2026-10-19), and the data and app-backend designers (U7). U4's harness standards went into the existing `harness-engineering` skill instead of a new `harness-standards` skill. U6's lint does not compare `## Todo` headings with sidecar phases, because `## Todo` is now a one-line pointer. Until this doc landed, the plan's header still read "for approval, not implemented"; it now records the implementation.
 
 ## Open gaps
 
@@ -246,7 +246,7 @@ Facts found while writing this doc. None of them are fixed here.
 - `WORKFLOWS.md:11-63`, `:95-116`, `:130-208`
 - `skills/playbook-or-skill/SKILL.md`, `skills/operating-mode/SKILL.md`, `skills/scope-registers/SKILL.md`, `skills/imp-standardize/SKILL.md:35-43`, `skills/backlog-conventions/SKILL.md`
 - `skills/pb-*/SKILL.md` and `skills/pb-*/todo.json` (16 directories)
-- `scripts/lint-playbooks.ts`, `scripts/playbook-index-check.py`, `VERIFY.md:36,38`, `FEEDBACK.md:19-24`, `docs/queries/playbook-routes.sql`
+- the playbook router's `scripts/lint-playbooks.ts` (this repo's `scripts/lint-playbooks.ts` until 2026-10-19), `scripts/playbook-index-check.py`, `VERIFY.md:36,38`, `FEEDBACK.md:19-24`, `docs/queries/playbook-routes.sql`
 - `extensions/playbook-probe/index.ts` and `config.yml:75-76` (both removed 2026-10-17; read them at `d77e0a3`), `~/.omp/plugins/omp-plugins.lock.json`, `~/.git-hooks/pre-commit:76-95`
 - `docs/playbook-refactor-plan.md`; git `e63e1f7` (#17), `7cfd624` (#24), `8f1f8e6` (#27), `178a680`, `d77e0a3` (#38)
 - `IMPROVEMENTS.md` rows 2026-09-28 (standard work; removing the factory; removing the workflow graphs; committed mode rewritten), 2026-09-30 (harness-engineering standard), 2026-10-01 (domain pairs and pstack port; playbook-or-skill), 2026-10-03 (inline agents), 2026-10-09 (worker class retired; code-craft rules scoped; lint disabled), 2026-10-11 (Linear rows)

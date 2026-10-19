@@ -51,6 +51,17 @@
  * of failure instead of left to guess, and cannot spiral into retry variants
  * (pip -> pip3 -> python -m pip).
  *
+ * MERGE GATE (OMP-9 AC3, added 2026-10-19). `gh pr merge` and `gh stack merge`
+ * are refused while any check on the pull request — or, for a stack, on any PR
+ * the merge would land — is failing or pending. Nothing else refuses a red
+ * merge here: the repo is private on the Free plan, where rulesets and branch
+ * protection return 403. The state is read in one `gh api graphql` call. A PR
+ * with NO checks at all is allowed (a repo with no CI must stay mergeable), and
+ * anything UNVERIFIABLE — an unreachable gh, an unparseable answer, an unknown
+ * rollup state, a PR or stack that will not resolve — BLOCKS, because the
+ * environment this hook is handed is the one the checked agent controls. Full
+ * reasoning, including why `--auto` does not lift the gate: MERGE GATE below.
+ *
  * HONEST LIMITS
  * Fires on the `bash` and `eval` tool calls. Not a sandbox: a committed script, a
  * Makefile, an alias, `git -c`, or obfuscated subprocess code can still get
@@ -97,6 +108,8 @@
  *   - `command-guard-branch.test.ts` — the branch prefixes: the task's kind
  *                                    accepted, `release/` and bare names refused.
  *   - `command-guard-issues.test.ts` — `issues-in-backlog`, both creation routes.
+ *   - `command-guard-merge.test.ts` — the merge gate: every rollup state, the
+ *                                    unverifiable direction, stacks, `--auto`.
  *   - `guard-e2e-real-git.test.ts`  — real git, no stub: the ordinary command
  *                                    forms against the actual repos.
  * Re-run them all after any edit to this file. Run with `bun run <suite>`.
@@ -760,6 +773,27 @@ export default function (pi: HookApi): void {
 					`that agent, so it constrains nothing. If this is a false positive, the matcher is what gets fixed.`,
 			};
 		}
+
+		// ── MERGE GATE (OMP-9 AC3) ──
+		// Runs LAST, after every text check: a merge another check already refuses
+		// (an unsquashed one is `no-bare-merge`) pays for no network call at all.
+		const mergeProblem = await mergeGateProblem(pi, command, commandCwd(command, ctx.cwd));
+		if (mergeProblem) {
+			pi.appendEntry(RECORD_TYPE, {
+				guard: mergeProblem.id,
+				detail: mergeProblem.detail,
+				cwd: ctx.cwd,
+				at: new Date().toISOString(),
+			});
+			return {
+				block: true,
+				reason:
+					`Blocked (${mergeProblem.id}): ${mergeProblem.detail}\n` +
+					(mergeProblem.id === "checks-not-green" ? MERGE_NOT_GREEN_REASON : MERGE_UNVERIFIED_REASON) +
+					`\nThis has no override: a marker the agent being checked can write is authorized by ` +
+					`that agent, so it constrains nothing. Wait for the checks to conclude, then merge.`,
+			};
+		}
 	});
 }
 
@@ -811,6 +845,236 @@ function stackBranchProblem(command: string): string | null {
 		if (names.length === 0) return `gh stack ${m[1]} with no branch name (it would prompt, or generate a date-slug name)`;
 		const bad = names.find((name) => !BRANCH_OK.test(name));
 		if (bad) return bad;
+	}
+	return null;
+}
+
+/**
+ * ── MERGE GATE (OMP-9 AC3) ─────────────────────────────────────────────────
+ *
+ * `gh pr merge` and `gh stack merge` are refused while any check on the pull
+ * request — or, for a stack, on any PR the merge would land — is failing or
+ * pending. GitHub's own protection cannot carry this rule here: on a private
+ * repo on the Free plan, rulesets and branch protection return 403 (OMP-9), so
+ * nothing else refuses a red merge.
+ *
+ * The merge is found by TEXT, like every other check in this file.
+ * `no-bare-merge` (MERGE_UNSQUASHED) already refuses the unsquashed forms, so a
+ * command that reaches this gate carries `--squash`, `--rebase` or
+ * `--merge-method squash|rebase`. Quoted spans are removed before looking, so
+ * `echo 'gh pr merge 2 --squash'` names no merge; in the other direction, a
+ * merge written inside quotes (`eval 'gh pr merge 2 --squash'`) is not seen
+ * here. Both directions are stated in `docs/guards.md` with the rest of this
+ * guard's limits — closing the second needs the structural matcher, which is a
+ * separate change.
+ *
+ * The state comes from the API the CLI itself reads, in ONE call:
+ * `gh api graphql` asking for `pullRequest(number:) { statusCheckRollup { state } }`,
+ * plus `stack { entries { nodes { pullRequest { … } } } }` for a stack merge.
+ * Measured 2026-10-19 against gh 2.81.0 and a live four-PR stack: the rollup is
+ * null when the PR has no checks, and its state is one of SUCCESS, PENDING,
+ * EXPECTED, FAILURE, ERROR (the StatusState enum).
+ *
+ * TWO DECISIONS, both deliberate:
+ *
+ *  - NO CHECKS AT ALL (`statusCheckRollup` null) is ALLOWED. A repo with no CI
+ *    must stay mergeable — this guard is global, and most repos it watches have
+ *    no workflow — and the rule is about checks that exist. `EXPECTED` is NOT
+ *    that case: it means checks are expected and have not reported, so it blocks
+ *    with the pending ones.
+ *  - ANYTHING UNVERIFIABLE BLOCKS. An unreachable gh, a non-zero exit, an
+ *    unparseable answer, an unknown rollup state, a PR that will not resolve, or
+ *    a stack that will not enumerate all refuse the merge: the checked agent
+ *    controls the environment this hook is handed, and "I could not see the
+ *    checks" is not evidence that they are green.
+ *
+ * `--auto` does NOT lift the gate: auto-merge waits only for REQUIRED checks,
+ * and a repo that cannot set required checks would land a pending PR at once.
+ *
+ * The repository is read from the command, never assumed: `-R other/repo` and
+ * `--repo=other/repo` (on either side of the verb) and a PR URL each name one,
+ * and the checks are read from THAT repository — a same-numbered PR in the
+ * session's repo is a different PR. With nothing named, gh's own
+ * `{owner}`/`{repo}` placeholders resolve it.
+ *
+ * Declared after the hook, like `stackBranchProblem`, so no line
+ * `docs/guards.md` cites by number moves; the handler calls these at run time.
+ */
+const GH_MERGE =
+	/(?:^|[^A-Za-z0-9_-])gh\s+((?:-R\s+\S+\s+|--repo(?:=\S+|\s+\S+)\s+)?)(pr|stack)\s+merge(?![\w-])([^\n;|&]*)/g;
+/** `gh pr merge` flags that consume the next token as their value. */
+const PR_MERGE_VALUE_FLAGS = new Set([
+	"-b", "--body", "-F", "--body-file", "-t", "--subject", "-A", "--author-email", "--match-head-commit", "-R", "--repo",
+]);
+/** `gh stack merge` flags that consume the next token as their value. */
+const STACK_MERGE_VALUE_FLAGS = new Set(["--merge-method", "-R", "--repo"]);
+const GRAPHQL_PR =
+	"query($owner:String!,$name:String!,$num:Int!){repository(owner:$owner,name:$name){pullRequest(number:$num){number statusCheckRollup{state}}}}";
+const GRAPHQL_STACK =
+	"query($owner:String!,$name:String!,$num:Int!){repository(owner:$owner,name:$name){pullRequest(number:$num){number statusCheckRollup{state} stack{entries(first:100){nodes{pullRequest{number statusCheckRollup{state}}}}}}}}}";
+const MERGE_NOT_GREEN_REASON =
+	"The command guard refuses a merge while any check on the pull request — or, for a stack, on any PR the merge would land — " +
+	"is failing or pending (OMP-9). Wait for the checks to conclude (`gh pr checks <n> --watch`), then merge. " +
+	"A PR with no checks at all is allowed: this rule is about checks that exist.";
+const MERGE_UNVERIFIED_REASON =
+	"The command guard refuses a merge it cannot verify: an unreadable check state is not evidence that the checks are green, " +
+	"and the environment this hook is handed is the one the checked agent controls. Repair gh (or read the checks by hand), then merge.";
+
+interface MergeProblem {
+	id: "checks-not-green" | "checks-unverified";
+	detail: string;
+}
+
+/** A pull request as the stack query returns it. */
+interface GraphqlPullRequest {
+	number?: number;
+	statusCheckRollup?: { state?: string } | null;
+	stack?: { entries?: { nodes?: { pullRequest?: GraphqlPullRequest | null }[] } } | null;
+}
+
+/** One PR's rollup state: null when it is green, else the problem and its direction. */
+function rollupProblem(pr: GraphqlPullRequest | null | undefined): MergeProblem | null {
+	if (!pr || typeof pr.number !== "number") {
+		return { id: "checks-unverified", detail: "a pull request in the stack could not be read" };
+	}
+	const state = pr.statusCheckRollup?.state;
+	if (state === undefined || state === null) return null; // no checks reported: allowed
+	if (state === "SUCCESS") return null;
+	if (state === "PENDING") return { id: "checks-not-green", detail: `#${pr.number} has checks pending` };
+	if (state === "EXPECTED") {
+		return { id: "checks-not-green", detail: `#${pr.number} has checks expected but not yet reported` };
+	}
+	if (state === "FAILURE" || state === "ERROR") {
+		return { id: "checks-not-green", detail: `#${pr.number} has a failing check` };
+	}
+	return { id: "checks-unverified", detail: `#${pr.number} has an unknown check state '${state}'` };
+}
+
+/** Parse a gh invocation's JSON answer; null when gh failed or answered nothing usable. */
+async function ghJson(pi: HookApi, args: string[], cwd?: string): Promise<unknown> {
+	try {
+		const out = await pi.exec("gh", args, { cwd, timeout: 20000 });
+		if ((out?.code ?? 1) !== 0) return null;
+		return JSON.parse(out?.stdout ?? "");
+	} catch {
+		return null;
+	}
+}
+
+/** `owner/repo` named by `-R`/`--repo` in this text, or null. */
+function namedRepoIn(text: string): string | null {
+	const m = /(?:^|\s)(?:-R|--repo)(?:=|\s+)(\S+)/.exec(text);
+	if (!m) return null;
+	const parts = m[1].split("/").filter(Boolean);
+	return parts.length >= 2 ? `${parts[parts.length - 2]}/${parts[parts.length - 1]}` : null;
+}
+
+/** The first positional argument of a merge invocation: the PR or stack selector. */
+function mergeSelector(args: string, valueFlags: Set<string>): string | undefined {
+	const tokens = args.trim().split(/\s+/).filter(Boolean);
+	for (let i = 0; i < tokens.length; i++) {
+		const t = tokens[i];
+		if (t === "\u0000") continue; // a quoted span: data, never the selector
+		if (t.startsWith("-")) {
+			if (!t.includes("=") && valueFlags.has(t)) i++;
+			continue;
+		}
+		return t;
+	}
+	return undefined;
+}
+
+/** The PR a merge selector names, with the repository it names when the selector carries one. */
+async function resolveSelector(
+	pi: HookApi,
+	selector: string | undefined,
+	repo: string | null,
+	cwd?: string,
+): Promise<{ num: number; repo: string | null } | null> {
+	if (selector) {
+		// A PR URL carries its own repository, which is not necessarily this one.
+		const url = /^https?:\/\/[^/\s]+\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/.exec(selector);
+		if (url) return { num: Number.parseInt(url[3], 10), repo: `${url[1]}/${url[2]}` };
+		if (/^\d+$/.test(selector)) return { num: Number.parseInt(selector, 10), repo };
+	}
+	const args = ["pr", "view", ...(selector ? [selector] : []), ...(repo ? ["-R", repo] : []), "--json", "number", "-q", ".number"];
+	const answer = await ghJson(pi, args, cwd);
+	return typeof answer === "number" && Number.isFinite(answer) ? { num: answer, repo } : null;
+}
+
+/** Whether one merge invocation may proceed, or the problem that refuses it. */
+async function mergeProblemFor(
+	pi: HookApi,
+	kind: "pr" | "stack",
+	args: string,
+	repo: string | null,
+	cwd?: string,
+): Promise<MergeProblem | null> {
+	const selector = mergeSelector(args, kind === "pr" ? PR_MERGE_VALUE_FLAGS : STACK_MERGE_VALUE_FLAGS);
+	const target = await resolveSelector(pi, selector, repo, cwd);
+	if (target === null) {
+		return {
+			id: "checks-unverified",
+			detail: `the pull request to merge${selector ? ` ('${selector}')` : " on this branch"} could not be identified, so its checks could not be read`,
+		};
+	}
+	const num = target.num;
+	// `{owner}`/`{repo}` resolve from the session's repo; a command that named
+	// another one is read from the repo it named.
+	const [owner, name] = target.repo ? target.repo.split("/") : ["{owner}", "{repo}"];
+	const answer = await ghJson(
+		pi,
+		[
+			"api", "graphql",
+			"-f", `query=${kind === "stack" ? GRAPHQL_STACK : GRAPHQL_PR}`,
+			"-F", `owner=${owner}`,
+			"-F", `name=${name}`,
+			"-F", `num=${num}`,
+		],
+		cwd,
+	);
+	const pr = (answer as { data?: { repository?: { pullRequest?: GraphqlPullRequest | null } } } | null)?.data?.repository
+		?.pullRequest;
+	if (!pr) {
+		return { id: "checks-unverified", detail: `the check state of PR #${num} could not be read: gh is unreachable, or could not resolve it` };
+	}
+	const problems: MergeProblem[] = [];
+	if (kind === "stack") {
+		if (!pr.stack) {
+			return {
+				id: "checks-unverified",
+				detail: `PR #${num} is not part of a stack, so the PRs this merge would land could not be enumerated`,
+			};
+		}
+		for (const node of pr.stack.entries?.nodes ?? []) {
+			const problem = rollupProblem(node?.pullRequest);
+			if (problem) problems.push(problem);
+		}
+	}
+	const own = rollupProblem(pr);
+	if (own) problems.push(own);
+	if (!problems.length) return null;
+	// An unreadable state is reported as unverified even when a red one sits
+	// beside it: the merge is refused either way, and the reason says which kind
+	// of refusal it is.
+	const unverified = problems.some((p) => p.id === "checks-unverified");
+	return {
+		id: unverified ? "checks-unverified" : "checks-not-green",
+		detail: problems.map((p) => p.detail).join("; "),
+	};
+}
+
+/**
+ * The gate: null when the command holds no merge invocation that must be
+ * refused. Every merge in the command is judged, not only the first.
+ */
+async function mergeGateProblem(pi: HookApi, command: string, cwd?: string): Promise<MergeProblem | null> {
+	const unquoted = command.replace(/'[^']*'|"[^"]*"/g, " \u0000 ");
+	for (const m of unquoted.matchAll(GH_MERGE)) {
+		const kind = m[2] === "stack" ? "stack" : "pr";
+		const repo = namedRepoIn(`${m[1]} ${m[3]}`);
+		const problem = await mergeProblemFor(pi, kind, m[3], repo, cwd);
+		if (problem) return problem;
 	}
 	return null;
 }

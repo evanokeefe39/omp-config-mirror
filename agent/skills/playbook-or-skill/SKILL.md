@@ -78,8 +78,10 @@ To make a playbook work for a new domain, add a skill and bind it in one of thos
   each other.
 - Compose another playbook with the literal text `run pb-<name>` in an item.
 - Index the playbook in `WORKFLOWS.md`.
-- Run `bun ~/.omp/agent/scripts/lint-playbooks.ts` before committing; exit 0 is
-  the gate.
+- Run the playbook router's `scripts/lint-playbooks.ts` with `bun`, from its
+  checkout under `~/repos/`, before committing (it defaults to
+  `~/.omp/agent/skills`); exit 0 is the gate. The router repo is private, so
+  this published skill does not name it.
 
 ## Before writing one
 
