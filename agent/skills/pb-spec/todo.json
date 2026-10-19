@@ -1,0 +1,36 @@
+{
+  "phases": [
+    {
+      "phase": "spec: frame",
+      "items": [
+        "[main] Find or create this run's task per `skill://backlog-conventions` (search first: `task_search` / `backlog search`): kind `spec`, one domain; set it In Progress. The PR that lands the spec carries `Closes <ID>`; when nothing lands, set the task Done once the spec is approved. No `backlog/` yet: init it per the skill's `## Setting up a repo`; neither MCP nor CLI available: stop",
+        "[main] State the intent, the users and the outcome",
+        "[scout] Find existing specs, ADRs and contracts for the area"
+      ]
+    },
+    {
+      "phase": "spec: specify",
+      "items": [
+        "[doc-writer] Write the behavioural spec: Intent, Incumbent (when `skill://playbook-or-skill`'s incumbent question named one: every demonstrated predecessor mechanism with a disposition of `preserved`, `replaced-with-parity`, or `deliberately dropped: <reason>`, walking the categories in `skill://pb-spec`; with none, state `none` affirmatively), Behavioral Contracts (GIVEN/WHEN/THEN, or EARS `WHEN … THE SYSTEM SHALL` for system rules), Edge Case Inventory, Negative Space (with an incumbent: what the incumbent did that the new system must not silently lose), Open Questions; add quality scenarios (latency, freshness, cost) where they matter. No technology choices. Mark unknowns `[NEEDS CLARIFICATION]` inline instead of guessing"
+      ]
+    },
+    {
+      "phase": "spec: clarify",
+      "items": [
+        "[main] Ask the user every `[NEEDS CLARIFICATION]` and Open Question, using the clarify ambiguity taxonomy (scope, data, non-functional, edge cases, terminology). A spec with open questions does not go to design"
+      ]
+    },
+    {
+      "phase": "spec: check",
+      "items": [
+        "[main] Run `bun ~/.omp/agent/scripts/lint-spec.ts <spec.md>`; a non-zero exit is red on a missing section, a contract without GIVEN/WHEN/THEN, a leftover `[NEEDS CLARIFICATION]`, or a technology name in the contracts"
+      ]
+    },
+    {
+      "phase": "spec: review",
+      "items": [
+        "[doc-reviewer] Check that every contract is testable, that no \"how\" leaked in, that edge cases cover each contract's failure path, and that the Incumbent section carries a disposition for every demonstrated predecessor mechanism or states `none` affirmatively — a mechanism with no disposition is red"
+      ]
+    }
+  ]
+}

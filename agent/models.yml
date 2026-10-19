@@ -1,0 +1,131 @@
+# Cost overrides and OpenRouter routing.
+#
+# WHY (2026-10-12): modelRoles moved off first-party DeepSeek onto
+# openrouter/deepseek/deepseek-v4.1-flash. The first-party provider serves the
+# SAME model (its id `deepseek-flash` is display-named "DeepSeek-V4.1-Flash")
+# but only at its own flat list price, and it exposes no per-upstream routing.
+# OpenRouter publishes 31 upstreams for this model, several running 30-51%
+# discounts, with cache-read as low as $0.0029/M against first-party $0.006/M.
+# See docs/models.md and IMPROVEMENTS.md.
+#
+# Verify rates against https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints
+# (public, no auth). Per-upstream prices, not one card - see the cost note below.
+providers:
+  # Never route OpenRouter traffic to the OpenInference upstream.
+  #
+  # WHY: OpenInference answers omp's real task prompt with an idle greeting
+  # ("Ready. What's the task?") and no tool call. 22/30 the eval harness repo fast-30
+  # trials (2026-10-09) were served by it and no-opped. Pinned repro
+  # 2026-10-10: OpenInference 9/9 greet (Responses and Chat wires), Venice
+  # 0/3. This is provider-level `compat`, so it applies to EVERY OpenRouter
+  # model, including deepseek/deepseek-v4.1-flash added 2026-10-12 - no
+  # per-model edit is needed for the ban to cover a new slug.
+  #
+  # `ignore` is forwarded verbatim as OpenRouter's `provider.ignore`:
+  # only+ignore of the same host returns OpenRouter's 404 "All providers have
+  # been ignored", which is how the ban is proven to reach the request.
+  # Evidence: the eval harness repo docs/worked-example.md section 3; docs/models.md.
+  openrouter:
+    compat:
+      openRouterRouting:
+        ignore: [OpenInference]
+    # Provider-level `compat` is deep-merged into every bundled OpenRouter
+    # model's own compat, and a per-model override's `compat` is deep-merged on
+    # top of that (mergeCompat, config/model-patch.ts; folded in
+    # config/model-registry.ts #loadBuiltInModels -> #applyModelOverrides).
+    # So `ignore` here reaches every model, and each model's `only` below is
+    # additive to it rather than replacing it.
+    #
+    # WHY per-model and not provider-level `only`: the pool is a property of
+    # the MODEL's endpoints, not of OpenRouter. A provider-level `only` built
+    # for deepseek silently strips novita/gmicloud from glm-5.3-flash, whose
+    # own cheapest members they are.
+    modelOverrides:
+      # OpenRouter-served DeepSeek V4.1 Flash - the id modelRoles pins
+      # (2026-10-12). Live discovery creates it with a zeroed cost card, so
+      # without this override the footer would display $0 for every turn.
+      #
+      # COST NOTE: omp applies ONE flat card per model id, but OpenRouter routes
+      # each request to a different upstream with its own price. As of
+      # 2026-10-12 the spread on this model was cache-read $0.0029-$0.034 and
+      # output $0.18-$2.40 across 31 endpoints. A flat card therefore cannot be
+      # exact. Pinned to the cheap-but-not-outlier band the blend ranking
+      # actually selects (Decart/Sail/DeepInfra class, ~$0.046-$0.073 blended
+      # $/M at this harness's cache-heavy mix) rather than the cheapest
+      # cache-read column. Reason: the cheapest-cache upstreams are the most
+      # expensive on output (OpenInference $0.0336 cache / $1.188 out; Relace
+      # $0.03 / $1.28), and this is a tool-calling agent whose cost is
+      # dominated by output and cache re-reads. Treat footer cost as an
+      # estimate for this model, not an invoice.
+      #
+      # Re-check with scripts/openrouter-sales.ts; see docs/models.md.
+      deepseek/deepseek-v4.1-flash:
+        cost:
+          input: 0.1
+          output: 0.3
+          cacheRead: 0.008
+        # Value pool (locked 2026-10-12): the pareto frontier plus fallback
+        # layers, chosen by scripts/openrouter-sales.ts. Uptime drifts run to
+        # run, so the fallback layers are what gets promoted when a frontier
+        # member degrades - pinning L1 alone would leave routing with no second
+        # choice. Widths: <=5 members, none priced above 3x the cheapest.
+        # OpenRouter still picks ONE member per request, price-weighted, so the
+        # cheap members serve normally and the fallbacks are reached on failure.
+        #
+        # Slugs are the endpoints-API `tag` prefix (decart/fp4 -> decart).
+        # Verified accepted 2026-10-12; display names work too. Re-check the
+        # pool with scripts/openrouter-sales.ts - see docs/models.md.
+        #
+        # Rebuilt 2026-10-17 on BILLED cost, not list price: decart and morph
+        # out; inference-net and deepseek in. Two 300-turn samples priced by
+        # OpenRouter /generation (scripts/openrouter-sales.ts `billed` block):
+        # decart hit cache on ~75% of input and billed ~5x deepinfra per token
+        # (n=70/65 turns); 45 of 50 sampled mid-session cold turns were decart
+        # re-reading the whole context uncached. morph billed ~2x deepinfra at a
+        # 90-94% hit rate and, as the cheapest prompt price in the pool, drew
+        # the most traffic (OpenRouter weights members by inverse-square price).
+        # inference-net 97-99% hit (n=92/105); deepinfra and sail-research best
+        # measured. streamlake is unmeasured on our traffic but lists the
+        # cheapest cache-read price and held up1d 100% across runs.
+        #
+        # 2026-10-18: `deepseek` dropped - its endpoint is no longer listed for
+        # this model (endpoints API returns no deepseek tag), so the slug
+        # admitted nothing; it had also dipped to up1d 88.2% on 10-15.
+        compat:
+          openRouterRouting:
+            only: [deepinfra, sail-research, inference-net, streamlake]
+
+      # OpenRouter-served GLM 5.3 Flash - the id modelRoles pins for `vision`.
+      # Its own pool: novita and near-ai are members here and NOT in the
+      # deepseek pool, which is why `only` lives per model.
+      #
+      # Rebuilt 2026-10-17: inference-net dropped (its sale ended; it fell from
+      # the cheapest member to L5). No recorded usage of this model in 7 days,
+      # so the pool rests on list price and the uptime history, not a billed
+      # sample: streamlake, deepinfra, near-ai and novita held up1d >= 96% on
+      # every run since 10-12. decart is left out on the deepseek evidence of
+      # poor cache hits; gmicloud on its chronic 10-14/10-15 uptime fall.
+      z-ai/glm-5.3-flash:
+        compat:
+          openRouterRouting:
+            only: [streamlake, deepinfra, near-ai, novita]
+
+  # First-party DeepSeek. No longer used by modelRoles (switched 2026-10-12)
+  # but retained: old sessions, stragglers and any explicit `deepseek/...`
+  # override still resolve here, and the zeroed catalog card would otherwise
+  # make their recorded cost read $0.
+  deepseek:
+    modelOverrides:
+      # Legacy slug, still accepted and served as V4.1-Flash at Flash price.
+      deepseek-v4-flash:
+        cost:
+          input: 0.3
+          output: 1.2
+          cacheRead: 0.006
+      # Display-named "DeepSeek-V4.1-Flash". Live discovery creates it with a
+      # zeroed cost card, so without this override it would display $0.
+      deepseek-flash:
+        cost:
+          input: 0.3
+          output: 1.2
+          cacheRead: 0.006

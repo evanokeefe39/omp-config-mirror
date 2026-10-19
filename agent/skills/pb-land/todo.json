@@ -1,0 +1,41 @@
+{
+  "phases": [
+    {
+      "phase": "land: verdicts",
+      "items": [
+        "[main] **Verify every PR independently.** One `[app-backend-reviewer|data-reviewer|ux-reviewer|iac-reviewer|harness-reviewer]` per PR, not batched, each exercising the real surface (the domain row in `skill://operating-mode`) against parent versus head. Each returns `PASS`, `PASS+NOTES` or `FAIL`. Safe means a verdict from an agent that did not write the code; CI green is not a verdict, and an approving bot review is not a verdict",
+        "[main] **Self-verified exception, and only this one.** A PR may land without an independent verdict only when all of these hold: the user asked to merge it; it changes no instruction or executable — no skill, rule, hook, agent, extension, script, doc, `AGENTS.md`, CI workflow or source code; and every file it touches is one of: a file omp itself writes (`agent/last-changelog-version`, `marketplaces.json` and the like), generated output, an appended ledger row that adds no check, a backlog record (task or milestone file), or a configuration value measured in the same session (an `agent/models.yml` pool from the report). Its body then carries `## Verification` with the run that proves it and the line `Verdict: self-verified — <reason>`. Anything else waits for a verdict, however small",
+        "[main] **Tie every verdict to its patch.** Record the verdict head SHA, base SHA, and the stable `git patch-id` of that PR's base-to-head diff **without `backlog/`**, which carries only task records and status: `git diff <base> <head> -- ':(top)' ':(exclude,top)backlog' | git patch-id --stable`. The `:(top)` prefixes make it independent of the working directory — a bare `.` is cwd-relative and silently narrows the patch (measured 2026-10-19). A diff that is empty after the exclusion — a PR of backlog records only — prints no patch-id at all: record `backlog-only` instead, and land it under the self-verified exception. A rebase or base retarget rewrites SHAs and can silently invalidate a verdict without touching a check, while a status flip or a ledger row cannot change what the code does. Before landing, compare the recorded patch-id with the current one; re-verify when the code patch changed, and when it did not, keep the verdict but re-run mergeability and CI at the current head. Never use matching commit messages or a green check from an older SHA as a substitute"
+      ]
+    },
+    {
+      "phase": "land: select",
+      "items": [
+        "[main] **Land only the contiguous verified run rooted at the bottom.** Walk up from the lowest unmerged PR and stop at the first one without a passing verdict, where `PASS`, `PASS+NOTES` and a recorded self-verified exception pass. A verified PR above an unverified one is not landable. Report the ceiling as a PR number and say what breaks the chain",
+        "[main] **Bring the stack current before merging.** A chain of PRs that is not yet a GitHub stack becomes one first: `gh stack link` with the PRs bottom to top. Then `gh stack sync` (fetch, cascade-rebase onto trunk, push) and re-run the patch-id check for every PR in the run. GitHub requires a fully linear stack and evaluates every PR against the trunk's branch protection, so a divergence or a red required check stops here, not at merge"
+      ]
+    },
+    {
+      "phase": "land: land",
+      "items": [
+        "[main] **Set the tasks `Done` on the ceiling branch.** Verdicts are tied to the patch without `backlog/`, so this commit does not void them. For every task the run closes — each PR whose body says `Closes <ID>` — commit the status change on the ceiling branch, the top PR that will be merged, so one atomic stack merge puts every `Done` on trunk and `main` never carries `For Review` for merged work. Work in the worktree that already holds that branch (`git -C <worktree> …`; a second checkout of the same branch fails), then `backlog task edit <ID> -s Done` for each, commit `chore(backlog): set <IDs> Done`, and `gh stack sync` so the branches above are rebased. A task the run does not finish stays `For Review` and gets a follow-up",
+        "[main] **Merge the verified run in one command.** A stack: `gh stack merge <ceiling PR number> --squash --yes` merges every PR from the bottom up to the ceiling as one atomic operation, one squash commit per PR. `gh` reads a bare number as a stack number first and a PR number second, so check with `gh stack view` that the number names the ceiling PR and not a stack. A single PR outside any stack: `gh pr merge <N> --squash --delete-branch`, or with `--auto` added when the user asked for merge-when-ready. Merge method per `skill://git-conventions` Precedence. When trunk uses a merge queue, `gh stack merge` queues the run instead and the queue's method applies",
+        "[main] **Do not read `autoMergeRequest` as stack readiness.** It says GitHub auto-merge was requested for one PR, and nothing about whether a descendant is queued, whether a patch verdict is current, or whether the contiguous stack is safe"
+      ]
+    },
+    {
+      "phase": "land: watch",
+      "items": [
+        "[main] **Confirm what reached trunk.** Fetch trunk and check that every PR in the run reports `state` `MERGED` with a non-null `mergedAt`, and that trunk gained one squash commit per PR, each titled with the PR title. Then `gh stack sync` so the PRs above the ceiling rebase onto the new trunk, and inspect the new bottom PR's base, head, checks and patch-id. Independent work stays outside this chain and ships on its own",
+        "[main] **Watch a queued or armed merge until it merges or fails.** Watch with `gh pr checks <N> --watch` as an event wake, then read `gh pr view <N> --json state,mergedAt,mergeStateStatus,statusCheckRollup,autoMergeRequest`, ignoring a green list until `mergedAt` is non-null or `state` is `MERGED`. Hard-fail only when `state` is `CLOSED` with no `mergedAt`, a required check concludes `FAILURE` or `CANCELLED` and blocks merge after auto-merge is no longer pending, or `mergeStateStatus` is `UNSTABLE` or worse. A wait where checks are pending or auto-merge is armed is not a failure. Run the wait as an async `bash` job and re-check on completion; never poll. If the queue stalls, diagnose before mutating"
+      ]
+    },
+    {
+      "phase": "land: stop",
+      "items": [
+        "[main] **Stop at the ceiling.** When the verified run is merged, report what landed, the next unverified PR, and what verifying it would take. Extending the run is a new pass through the verdicts step",
+        "[main] **Report milestone state.** For each milestone a landed PR's task belongs to, read `backlog milestone list --show-completed` (the bare command collapses completed milestones). A milestone whose tasks are now all `Done` is complete, **except `maintenance`**, which is never complete and never closed: in a package-profile repo say so and offer `run pb-release`; landing never cuts the release itself. In a continuous repo, archive the milestone on a `chore/` branch"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "phases": [
+    {
+      "phase": "kaizen: find the standard",
+      "items": [
+        "[main] Find or create this run's task per `skill://backlog-conventions` (search first: `task_search` / `backlog search`): kind `continuous-improvement`, the subject's domain; set it In Progress. No `backlog/` yet: init it per the skill's `## Setting up a repo`; neither MCP nor CLI available: stop",
+        "[main] Read `skill://imp-kaizen` §1 and name the subject's standard, or record `no standard yet` as the finding. A subject with no standard is the first countermeasure, not a dead end"
+      ]
+    },
+    {
+      "phase": "kaizen: measure (parallel)",
+      "items": [
+        "[scout] Measure the subject from `~/.omp/agent/sessions/**/*.jsonl` with duckdb per `skill://imp-kaizen` §2: how often it ran, which routes it took, where it went quiet",
+        "[scout] Read the owning scope's `DEFECTS.md`, `IMPROVEMENTS.md`, `FEEDBACK.md` and `VERIFY.md` for prior instances and existing coverage"
+      ]
+    },
+    {
+      "phase": "kaizen: propose",
+      "items": [
+        "[main] Write suggestions as what / why / how / goes-red per `skill://imp-kaizen` §3, each grounded in a measurement or a ledger row, in a retrospective page under the owning scope's `docs/retrospectives/`, then ask the user which to implement. A suggestion nobody can make go red is a wish, not a countermeasure"
+      ]
+    },
+    {
+      "phase": "kaizen: record",
+      "items": [
+        "[main] Record every proposal the user decided on through `skill://imp-change`: an accepted countermeasure gets status `implemented` when it lands (or `not actioned` until then), and a rejected one gets status `rejected` with the user's reason, so a declined idea is not proposed again unseen. `skill://imp-defect` for the instance if a defect is being closed. The run's write-up goes under `docs/retrospectives/`",
+        "[main] File each accepted countermeasure as its own task, only with the user's approval (its own kind, naming this run's task in its description), then set this run's task Done with the proposals and the user's decisions in `--final-summary`"
+      ]
+    }
+  ]
+}

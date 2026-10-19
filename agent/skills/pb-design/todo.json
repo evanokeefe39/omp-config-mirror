@@ -1,0 +1,70 @@
+{
+  "phases": [
+    {
+      "phase": "design: input",
+      "items": [
+        "[main] Read the approved spec, or `run pb-spec` if there is none. Design-first is allowed only when it is labelled: spike, then design, then back-fill the spec",
+        "[main] Find or create this run's task per `skill://backlog-conventions` (search first: `task_search` / `backlog search`): kind `design`, one domain, `--dep <spec task>` when one exists; set it In Progress. The PR that lands design.md carries `Closes <ID>`; when nothing lands, set the task Done at hand-off. No `backlog/` yet: init it per the skill's `## Setting up a repo`; neither MCP nor CLI available: stop"
+      ]
+    },
+    {
+      "phase": "design: research what exists (parallel)",
+      "items": [
+        "[scout] Map the blast radius of the change in this repo",
+        "[scout] Find the domain's own conventions for the area",
+        "[scout|task] Survey current practice in the last 12 months on the web: `web_search` for targeted lookups with cited primary sources, `skill://deep-research` (Perplexity) for a multi-hop survey",
+        "[scout|task] Run a blindspot search on the web for something to adopt (`web_search`, or `skill://deep-research` when the space is wide); cite each candidate's source"
+      ]
+    },
+    {
+      "phase": "design: risk and depth",
+      "items": [
+        "[main] Ask the user \"adopt, adapt or build\" when a research candidate fits; stop for the decision before building",
+        "[main] List the risks and pick the path from the depth paths table (`skill://pb-design`): trivial, local, cross-component, high-risk, data product, UX-intensive, replacement/port. This replaces a fixed \"inside one function\" gate"
+      ]
+    },
+    {
+      "phase": "design: spike decision",
+      "items": [
+        "[main] For each risk that analysis cannot settle, write the question, a time box, and pass/fail criteria before running anything. Write `no spike: <reason>` when none is needed"
+      ]
+    },
+    {
+      "phase": "design: spike (conditional)",
+      "items": [
+        "[app-backend-engineer|data-engineer|ux-engineer|iac-engineer|harness-engineer] Run each spike in a throwaway worktree; the output is evidence (measurements, constraints) and the code is discarded"
+      ]
+    },
+    {
+      "phase": "design: diverge (parallel)",
+      "items": [
+        "[data-designer|app-backend-designer|ux-designer|task] Sketch 2-3 whole-shape candidates (types, signatures, data flow — for a UX candidate: direction, reference families and token deltas), each from a different starting axis: usage-first, data-first, or minimal-change. They must be whole-shape alternatives, not point fixes inside one shape. All use the same model"
+      ]
+    },
+    {
+      "phase": "design: screen",
+      "items": [
+        "[main] Reject or revise any candidate that trips a red flag (`skill://pb-design`). Two candidates differing only inside one shape count as one"
+      ]
+    },
+    {
+      "phase": "design: review to derisk",
+      "items": [
+        "[app-backend-reviewer|data-reviewer|ux-reviewer|iac-reviewer|harness-reviewer] Run an ATAM-lite review of the chosen candidate against the spec's quality scenarios, naming the risks, sensitivity points and tradeoffs"
+      ]
+    },
+    {
+      "phase": "design: choose and record",
+      "items": [
+        "[main] Pick the candidate on interface depth. Escalate when the top two are within one red flag of each other",
+        "[doc-writer] Write `design.md` from the picked candidate against the spec: Context, Alternatives considered, Decisions, Risks, Migration and rollback, and Tasks. Add an ADR only for a decision that outlives the change"
+      ]
+    },
+    {
+      "phase": "design: hand off",
+      "items": [
+        "[main] `run pb-feature`, or `run pb-bugfix`, or `run pb-refactoring`, with the tasks from design.md"
+      ]
+    }
+  ]
+}

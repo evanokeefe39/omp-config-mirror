@@ -1,0 +1,51 @@
+{
+  "phases": [
+    {
+      "phase": "new-project: frame",
+      "items": [
+        "[main] Answer before any file exists: what the scope is and why it exists (the README's first line), who will read it, and whether it has code. A non-code scope (document set, media library) gets no toolchain",
+        "[main] Choose the release profile per `skill://git-conventions` `## Releases`: `package` by default, or `continuous — <reason>` for a scope that ships on merge and nothing installs"
+      ]
+    },
+    {
+      "phase": "new-project: backlog",
+      "items": [
+        "[main] Initialise the backlog per `skill://backlog-conventions` `## Setting up a repo`: choose a letters-only prefix of at most 4 that no other repo already uses (`rg -g config.yml \"^task_prefix\" ~/repos/*/backlog ~/.omp/backlog`), then `backlog init \"<dir>\" --defaults --task-prefix <PREFIX> --integration-mode none` and `backlog config set remoteOperations false`. Neither MCP nor CLI available: stop the playbook",
+        "[main] Set the board up per `skill://backlog-conventions` `## Setting up a repo`: `statuses: [\"To Do\", \"In Progress\", \"For Review\", \"Done\"]` and the kind/domain labels in `backlog/config.yml`, and the standing `maintenance` milestone",
+        "[main] Create this run's task in that backlog: kind `chore`, one domain, title `Bootstrap <name>`, searching first (`task_search` / `backlog search`); set it In Progress. Its ID names the `chore/<id lowercased>-bootstrap` branch and the PR"
+      ]
+    },
+    {
+      "phase": "new-project: create",
+      "items": [
+        "[main] Create the repo with a live `main` and get onto the task's branch before the first commit, per `skill://git-conventions` `## Starting a repo` (`gh repo create <name> --private --add-readme --clone`, then `git checkout -b chore/<id lowercased>-bootstrap`)"
+      ]
+    },
+    {
+      "phase": "new-project: scaffold",
+      "items": [
+        "[main] Write `README.md` (what, why, how to run, in about three sentences, not a title), `LICENSE` (MIT unless told otherwise) and `.gitignore`",
+        "[main] Write `AGENTS.md`: what the scope is, its lifecycle stages, the `Release profile:` line chosen in frame (any deviation from the git-conventions templates stated beside it), and a `## Tracking` section holding the backlog's prefix, the path `backlog/` and `skill://backlog-conventions`",
+        "[main] Add the git files every repo gets from `skill://git-conventions` `## Repo files`: `CONTRIBUTING.md` and `.github/workflows/pr-title.yml`; on GitHub, set the squash merge settings to the PR title and body per `skill://git-conventions` `### GitHub merge settings` and read them back",
+        "[main] Initialise the toolchain only if the scope has code: for Python, `uv init` then `uv sync`, commit `uv.lock`, ignore `.venv`, and add `ruff.toml` per `skill://python-conventions`. A non-code scope records `n/a: no code`",
+        "[main] For a package-profile scope, add the release files from `skill://git-conventions` `## Repo files` after the toolchain, because the release type follows the version file it created (`pyproject.toml` → `python`, `package.json` → `node`, none → `simple` with `version.txt`): `release-please-config.json`, `.release-please-manifest.json`, the version file and `.github/workflows/release-please.yml`, with the `publish` job made real or deleted. Do not create `CHANGELOG.md`: release-please creates it on the first release. A `python` scope adds the `uv.lock` `extra-files` entry from `## Releases` (Lockfiles). Allow Actions to open PRs and read the setting back. A continuous scope records `n/a: continuous`",
+        "[main] Run `skill://imp-setup` for the four ledgers, `docs/` and the declared lifecycle stages; never hand-write a ledger"
+      ]
+    },
+    {
+      "phase": "new-project: land",
+      "items": [
+        "[main] run pb-open-pr",
+        "[main] run pb-land"
+      ]
+    },
+    {
+      "phase": "new-project: verify",
+      "items": [
+        "[main] Run `python ~/.omp/agent/skills/pb-new-project/scripts/check-bootstrap.py <path>` against a fresh clone of `main`, not the working tree; a failing item fails the playbook and goes back to the phase that owns it",
+        "[main] Confirm on GitHub that the `pr-title` check ran green on the bootstrap PR and that the bootstrap task reached Done in the merged PR",
+        "[main] For a package-profile scope, confirm the release-please run on `main` is green and its release PR proposes `0.1.0`; leave the release PR open for the user"
+      ]
+    }
+  ]
+}

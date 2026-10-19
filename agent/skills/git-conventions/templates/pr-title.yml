@@ -1,0 +1,40 @@
+name: pr-title
+
+# Squash-merge makes the PR title the commit on main, and release-please reads its
+# type to set the version (skill://git-conventions). Agents are held to the
+# conventional format by a local hook; this check holds everyone else to it.
+# The types match the commit types in skill://git-conventions `## Commits`.
+# `pull_request` runs the check on the PR that adds this file. A public repo that
+# takes PRs from forks switches to `pull_request_target` (forks get no token on
+# `pull_request`). Not a required check: release-please's release PR is opened
+# with GITHUB_TOKEN, which starts no workflows, so this never runs on it.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional-title:
+    runs-on: ubuntu-latest
+    # Title rules match the command guard's CONVENTIONAL regex (command-guard.ts).
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+            style
+          requireScope: false

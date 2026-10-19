@@ -1,0 +1,61 @@
+name: release-please
+
+# Package-profile repo (skill://git-conventions `## Releases`). release-please keeps
+# a release PR open on main; merging it bumps the version files, writes CHANGELOG.md
+# (release notes), tags vX.Y.Z and creates the GitHub Release.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      pr: ${{ steps.release.outputs.pr }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # OPTIONAL, advisory. A release PR opened with GITHUB_TOKEN starts no workflows,
+  # so it merges with no checks. This job runs the repo's CI against the release
+  # branch from main instead. Limits: it cannot be a required check on the release
+  # PR (it runs on main), and it is skipped when release-please pushes nothing to
+  # the branch. Needs ci.yml to accept workflow_call with a `ref` input:
+  #   on: { workflow_call: { inputs: { ref: { type: string, required: false } } } }
+  #   and its checkout step uses `with: { ref: ${{ inputs.ref }} }`.
+  # Delete this job when the repo has no CI workflow.
+  validate-release-pr:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.prs_created == 'true' }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+
+  # Publish lives in THIS workflow. A tag or release made with GITHUB_TOKEN does
+  # not trigger other workflows, so an `on: push: tags` publisher never fires.
+  # Delete this job when nothing is published (an install is a pull of the tag).
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      # Replace with the project's build + publish steps (npm publish, uv publish,
+      # cargo publish, attaching binaries to the release, ...).
+      - run: echo "publish ${{ needs.release-please.outputs.tag_name }}"

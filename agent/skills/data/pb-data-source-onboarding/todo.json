@@ -1,0 +1,36 @@
+{
+  "phases": [
+    {
+      "phase": "data-source-onboarding: read-contracts",
+      "items": [
+        "[data-engineer] Route first when the source's behaviour or transport is unknown — an undocumented or adversarial endpoint (WAF/TLS fingerprinting, 202-as-challenge semantics), or no prior producer of its kind in this repo — by `run pb-source-discovery`; its recorded contract is the precondition for declaring this source",
+        "[data-engineer] If this source is the first member of a source family — no shared source contract or shared producer component yet exists for its kind — hand the run to `run pb-design` and `run pb-feature` to establish the contract and component before any sibling is onboarded",
+        "[data-engineer] Read the existing source contracts, the shared producer component, and the registration points; decide how this source extends them. Adding a source is a new producer on an existing contract, never a parallel pipeline or a one-off bootstrap script"
+      ]
+    },
+    {
+      "phase": "data-source-onboarding: declare-source",
+      "items": [
+        "[data-engineer] Declare the source: schema/fields, cadence, rate limits, failure modes, and which contract row it satisfies, before writing code. The declaration is the traceable requirement the implementation checks against"
+      ]
+    },
+    {
+      "phase": "data-source-onboarding: implement-producer",
+      "items": [
+        "[data-engineer] Implement the producer on the shared component; touch every registration point the component requires, the ones that fail silently included. Verify all registration points rather than trusting the producer's appearance in the graph"
+      ]
+    },
+    {
+      "phase": "data-source-onboarding: verify-landing",
+      "items": [
+        "[data-reviewer] Smoke one real, unfiltered item through the full landing path and read what actually landed (row count, schema, nulls) before any batch. Classify on why a request failed, not on the count of records. Then register the presence/freshness guardrail that fails on silent whole-source dropout, and state how the source is observed: a producer without a dropout guardrail is not done"
+      ]
+    },
+    {
+      "phase": "data-source-onboarding: record",
+      "items": [
+        "[main] Append the ledger rows the run produced via `skill://imp-defect` in the project scope, and run pb-open-pr"
+      ]
+    }
+  ]
+}

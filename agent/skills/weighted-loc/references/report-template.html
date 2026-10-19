@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en" class="bg-ground">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- theme-color mirrors --ground; a meta tag cannot read a CSS custom property -->
+<meta name="theme-color" content="#0B0B0C">
+<title>{{REPO}} — weighted LOC</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Design tokens live in :root (below) and are mapped here — never inline a hex.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ground: 'var(--ground)',
+          panel: 'var(--panel)',
+          rule: 'var(--rule)',
+          'rule-strong': 'var(--rule-strong)',
+          ink: 'var(--ink)',
+          'ink-2': 'var(--ink-2)',
+          'ink-3': 'var(--ink-3)',
+          muted: 'var(--muted)',
+          brass: 'var(--brass)',
+          high: 'var(--sev-high)',
+          med: 'var(--sev-med)',
+          low: 'var(--sev-low)',
+          tier1: 'var(--tier-1)', tier2: 'var(--tier-2)', tier3: 'var(--tier-3)',
+          tier4: 'var(--tier-4)', tier5: 'var(--tier-5)',
+        },
+        fontFamily: {
+          sans: 'var(--font-sans)',
+          mono: 'var(--font-mono)',
+        },
+        borderRadius: { xs: 'var(--r-xs)', sm: 'var(--r-sm)', md: 'var(--r-md)' },
+        maxWidth: { page: 'var(--page-w)', measure: 'var(--measure)' },
+      },
+    },
+  };
+</script>
+
+<style>
+  /* ── Design system · tokens ─────────────────────────────────────────────── */
+  :root {
+    /* ground — near-black, warm-neutral (not blue-grey) */
+    --ground:      #0B0B0C;
+    --panel:       #131315;
+    --rule:        #26262A;
+    --rule-strong: #35353B;
+
+    /* ink — paper-white, four levels */
+    --ink:   #EEECE7;
+    --ink-2: #B8B5AD;
+    --ink-3: #97948C;
+    --muted: #85827A;
+
+    /* one signature hue — the weight scale */
+    --brass: #D8A657;
+
+    /* severity — the only other hues */
+    --sev-high: #E5675E;
+    --sev-med:  var(--brass);
+    --sev-low:  #8A9099;
+
+    /* tier ramp — one hue, five lightness steps (the figure's scale) */
+    --tier-1: #3B3427;
+    --tier-2: #5D4B2D;
+    --tier-3: #96794A;
+    --tier-4: #B99048;
+    --tier-5: #D8A657;
+
+    /* type — one superfamily; machine strings in mono */
+    --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --fs-title: 30px;   --lh-title: 1.15;  --ls-title: -0.01em;
+    --fs-section: 13px; --lh-section: 1.3; --ls-section: 0.1em;
+    --fs-lead: 15px;    --lh-lead: 1.65;
+    --fs-table: 13px;   --lh-table: 1.55;
+    --fs-label: 11px;   --lh-label: 1.3;   --ls-label: 0.08em;
+    --fs-metric: 24px;  --lh-metric: 1.1;
+    --fs-mono: 12px;    --lh-mono: 1.5;
+
+    /* space, shape, depth */
+    --page-w: 920px;
+    --measure: 70ch;
+    --rhythm-section: 56px;
+    --rhythm-pad: 32px;
+    --figure-h: 18px;
+    --finding-label-w: 88px;
+    --swatch: 10px;
+    --r-xs: 2px;
+    --r-sm: 4px;
+    --r-md: 6px;
+  }
+
+  /* ── Base ───────────────────────────────────────────────────────────────── */
+  html { color-scheme: dark; }
+  body { font-feature-settings: "tnum" 1; }
+  ::selection { background: color-mix(in srgb, var(--brass) 28%, transparent); }
+
+  /* hairline rules are the depth strategy — shadows are invisible on black */
+  .rule { border-top: 1px solid var(--rule); }
+  .section {
+    margin-top: var(--rhythm-section);
+    border-top: 1px solid var(--rule);
+    padding-top: var(--rhythm-pad);
+  }
+
+  /* ── Type scale — named tokens, used by name ────────────────────────────── */
+  .t-title   { font-size: var(--fs-title);   line-height: var(--lh-title);   letter-spacing: var(--ls-title);   font-weight: 600; text-wrap: balance; }
+  .t-section { font-size: var(--fs-section); line-height: var(--lh-section); letter-spacing: var(--ls-section); font-weight: 600; text-transform: uppercase; color: var(--ink-2); text-wrap: balance; }
+  .t-lead    { font-size: var(--fs-lead);    line-height: var(--lh-lead); }
+  .t-table   { font-size: var(--fs-table);   line-height: var(--lh-table);  font-variant-numeric: tabular-nums; }
+  .t-label   { font-size: var(--fs-label);   line-height: var(--lh-label);  letter-spacing: var(--ls-label);   font-weight: 500; text-transform: uppercase; color: var(--muted); }
+  .t-metric  { font-size: var(--fs-metric);  line-height: var(--lh-metric); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .t-mono    { font-family: var(--font-mono); font-size: var(--fs-mono);    line-height: var(--lh-mono); word-break: break-all; }
+  .mono      { font-family: var(--font-mono); }
+  .metric-sub { font-size: var(--fs-label); line-height: var(--lh-label); color: var(--muted); }
+
+  .badge {
+    display: inline-flex; align-items: center; padding: 2px 8px;
+    font-size: var(--fs-label); line-height: var(--lh-label); letter-spacing: var(--ls-label);
+    font-weight: 600; text-transform: uppercase; border-radius: var(--r-sm);
+  }
+  .badge-high { color: var(--sev-high); background: color-mix(in srgb, var(--sev-high) 14%, transparent); }
+  .badge-med  { color: var(--sev-med);  background: color-mix(in srgb, var(--sev-med) 14%, transparent); }
+  .badge-low  { color: var(--sev-low);  background: color-mix(in srgb, var(--sev-low) 14%, transparent); }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+  th { font-size: var(--fs-label); line-height: var(--lh-label); letter-spacing: var(--ls-label); font-weight: 500; text-transform: uppercase; color: var(--muted); }
+  td { font-size: var(--fs-table); line-height: var(--lh-table); color: var(--ink-2); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.ink { color: var(--ink); }
+  tbody tr:last-child td { border-bottom: 0; }
+
+  .path { font-family: var(--font-mono); font-size: var(--fs-mono); line-height: var(--lh-mono); color: var(--ink-2); word-break: break-all; min-width: 0; }
+
+  /* ── The one figure — a 100%-stacked bar; no chart library, no SVG ─────── */
+  .figure-track {
+    display: flex; width: 100%; height: var(--figure-h);
+    border: 1px solid var(--rule-strong); border-radius: var(--r-sm);
+    overflow: hidden; background: var(--ground);
+  }
+  .figure-seg { display: flex; align-items: center; justify-content: center; min-width: 0; }
+  .figure-seg + .figure-seg { border-left: 1px solid var(--ground); }
+  .figure-label { font-size: var(--fs-label); line-height: var(--lh-label); letter-spacing: var(--ls-label); font-weight: 500; }
+  .figure-axis { display: flex; justify-content: space-between; }
+
+  .swatch { display: inline-block; width: var(--swatch); height: var(--swatch); border-radius: var(--r-xs); flex: none; }
+  .tier-name { display: inline-flex; align-items: center; gap: 8px; }
+  .tier-table tbody tr:nth-child(1) .swatch { background: var(--tier-1); }
+  .tier-table tbody tr:nth-child(2) .swatch { background: var(--tier-2); }
+  .tier-table tbody tr:nth-child(3) .swatch { background: var(--tier-3); }
+  .tier-table tbody tr:nth-child(4) .swatch { background: var(--tier-4); }
+  .tier-table tbody tr:nth-child(5) .swatch { background: var(--tier-5); }
+
+  /* ── Findings — clauses separated by hairlines, not cards ──────────────── */
+  .finding { padding: 24px 0; }
+  .finding + .finding { border-top: 1px solid var(--rule); }
+  .finding-fields { display: grid; gap: 10px; }
+  .finding-fields > div { display: grid; grid-template-columns: var(--finding-label-w) 1fr; gap: 16px; }
+
+  @media (width < 640px) {
+    th, td { padding: 8px; }
+    .tier-table th, .tier-table td { padding: 8px 4px; }
+    .tier-name { white-space: nowrap; }
+    .finding-fields > div { grid-template-columns: 1fr; gap: 4px; }
+  }
+</style>
+</head>
+
+<body class="bg-ground text-ink font-sans antialiased">
+<main class="mx-auto max-w-page px-6 py-16 md:py-20">
+
+  <!-- ── 1. Header ───────────────────────────────────────────────────────── -->
+  <header>
+    <p class="t-label">Weighted LOC — codebase assessment</p>
+    <h1 class="t-title mt-3">{{REPO}}</h1>
+    <p class="t-mono mt-2 text-muted" translate="no">{{BRANCH}} · {{DATE}}</p>
+
+    <!-- one paragraph, plain English, no jargon — the outsider's whole entry point -->
+    <p class="t-lead max-w-measure mt-6 text-ink-2">{{SUMMARY}}</p>
+
+    <!-- what was measured and what was excluded — tertiary, one line of context -->
+    <p class="t-table max-w-measure mt-4 text-ink-3">{{SCOPE}}</p>
+
+    <!-- key metrics — hairline-divided strip -->
+    <dl class="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-rule bg-rule md:grid-cols-4">
+      <div class="bg-panel px-5 py-4">
+        <dt class="t-label">Raw LOC</dt>
+        <dd class="t-metric mt-1">{{RAW_LOC}}</dd>
+      </div>
+      <div class="bg-panel px-5 py-4">
+        <dt class="t-label">Weighted LOC</dt>
+        <dd class="t-metric mt-1 text-brass">{{WEIGHTED_LOC}}</dd>
+      </div>
+      <div class="bg-panel px-5 py-4">
+        <dt class="t-label">Effective weight</dt>
+        <dd class="t-metric mt-1">{{EFFECTIVE_WEIGHT}}</dd>
+      </div>
+      <div class="bg-panel px-5 py-4">
+        <dt class="t-label">Findings</dt>
+        <dd class="t-metric mt-1">{{FINDING_COUNT}}</dd>
+        <dd class="metric-sub mt-1">{{FINDING_MIX}}</dd>
+      </div>
+    </dl>
+  </header>
+
+  <!-- ── 2. Totals ───────────────────────────────────────────────────────── -->
+  <section class="section">
+    <h2 class="t-section">Totals</h2>
+    <!-- a definition table, not a repeat of the strip: what each number means -->
+    <table class="mt-4">
+      <thead>
+        <tr><th>Term</th><th>Definition</th><th class="num">Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="ink">Raw LOC</td><td>Lines as counted, before weighting</td><td class="num ink tabular-nums">{{RAW_LOC}}</td></tr>
+        <tr><td class="ink">Weighted LOC</td><td>Each line × its tier's weight (1× / 2× / 5× / 10× / 20×)</td><td class="num ink tabular-nums">{{WEIGHTED_LOC}}</td></tr>
+        <tr><td class="ink">Effective weight</td><td>Weighted ÷ raw; how much the tree is bespoke rather than framework-leveraged</td><td class="num ink tabular-nums">{{EFFECTIVE_WEIGHT}}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── 3. By tier — table + the ONE figure ─────────────────────────────── -->
+  <section class="section">
+    <h2 class="t-section">By tier</h2>
+    <p class="t-table max-w-measure mt-3 text-muted">
+      Each block of code is weighted by how much it leans on a framework or library.
+      Weights are fixed: <span class="text-ink-2">1×, 2×, 5×, 10×, 20×</span>; there is no 3× or 4× tier.
+    </p>
+
+    <!-- FIGURE — one segment per tier, in order 1..5; width = the tier's share of weighted
+         LOC in % (the five widths sum to 100). Drop a tier's segment entirely when its
+         share is 0 — a 0%-wide segment would still paint its 1px separator. Keep an
+         in-segment label ONLY when the share is >= 10 — below that it clips at 390px; the
+         tier table below carries every share. Label colour follows the ramp: text-ink on
+         tiers 1–2, text-ground on tiers 3–5. -->
+    <div class="figure-track mt-6" role="img" aria-label="{{FIGURE_ARIA}}">
+      <div class="figure-seg bg-tier1 text-ink" style="width:{{T1_SHARE}}%"><span class="figure-label">{{T1_LABEL}}</span></div>
+      <div class="figure-seg bg-tier2 text-ink" style="width:{{T2_SHARE}}%"><span class="figure-label">{{T2_LABEL}}</span></div>
+      <div class="figure-seg bg-tier3 text-ground" style="width:{{T3_SHARE}}%"><span class="figure-label">{{T3_LABEL}}</span></div>
+      <div class="figure-seg bg-tier4 text-ground" style="width:{{T4_SHARE}}%"><span class="figure-label">{{T4_LABEL}}</span></div>
+      <div class="figure-seg bg-tier5 text-ground" style="width:{{T5_SHARE}}%"><span class="figure-label">{{T5_LABEL}}</span></div>
+    </div>
+    <div class="figure-axis t-label mt-2">
+      <span>Framework-leveraged</span><span>Fully bespoke</span>
+    </div>
+
+    <!-- the tier table is the figure's legend: swatch + label + weight + numbers -->
+    <table class="tier-table mt-6">
+      <thead>
+        <tr><th>Tier</th><th>Meaning</th><th class="num">Lines</th><th class="num">Weighted</th><th class="num">Share</th></tr>
+      </thead>
+      <tbody>
+        <!-- REPEAT: one row per tier, in order 1..5 — the swatch takes its colour from the row number -->
+        <tr><td class="ink"><span class="tier-name"><span class="swatch"></span>{{TIER_LABEL}}</span></td><td>{{TIER_MEANING}}</td><td class="num tabular-nums">{{TIER_LINES}}</td><td class="num tabular-nums">{{TIER_WEIGHTED}}</td><td class="num tabular-nums">{{TIER_SHARE}}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── 4. By dependency ────────────────────────────────────────────────── -->
+  <section class="section">
+    <h2 class="t-section">By dependency</h2>
+    <table class="mt-4">
+      <thead>
+        <tr><th>Dependency</th><th class="num">Lines</th><th>Breakdown</th></tr>
+      </thead>
+      <tbody>
+        <!-- REPEAT: one row per dependency -->
+        <tr><td class="ink">{{DEP_NAME}}</td><td class="num tabular-nums">{{DEP_LINES}}</td><td>{{DEP_BREAKDOWN}}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── 5. Top weighted files ───────────────────────────────────────────── -->
+  <section class="section">
+    <h2 class="t-section">Top 10 weighted files</h2>
+    <table class="mt-4">
+      <thead>
+        <tr><th class="num">Weighted</th><th class="num">Lines</th><th class="num">Tier</th><th>File</th></tr>
+      </thead>
+      <tbody>
+        <!-- REPEAT: one row per file, heaviest first -->
+        <tr><td class="num ink tabular-nums">{{F_WEIGHTED}}</td><td class="num tabular-nums">{{F_LINES}}</td><td class="num tabular-nums">{{F_TIER}}</td><td class="path" translate="no">{{F_PATH}}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── 6. Findings ─────────────────────────────────────────────────────── -->
+  <section class="section">
+    <h2 class="t-section">Findings</h2>
+    <p class="t-table max-w-measure mt-3 text-muted">
+      Ranked by severity, then by weighted-LOC impact. A finding names the block, what is
+      wrong, the conventional approach, and what fixing it would save.
+    </p>
+
+    <!-- clauses, not cards: each entry is hairline-separated, 24px above and below -->
+    <ol>
+      <!-- REPEAT: one <li class="finding"> per finding, highest severity first -->
+      <li class="finding">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span class="badge badge-{{SEV_CLASS}}">{{SEV_LABEL}}</span>
+          <span class="t-mono text-muted" translate="no">{{FINDING_ID}}</span>
+          <span class="path" translate="no">{{FINDING_LOCATION}}</span>
+        </div>
+        <dl class="finding-fields t-table mt-4">
+          <div><dt class="t-label">Violates</dt><dd class="text-ink">{{FINDING_VIOLATES}}</dd></div>
+          <div><dt class="t-label">Issue</dt><dd class="text-ink-2">{{FINDING_ISSUE}}</dd></div>
+          <div><dt class="t-label">Should be</dt><dd class="text-ink-2">{{FINDING_SHOULD_BE}}</dd></div>
+          <div><dt class="t-label">Tier impact</dt><dd class="text-ink-2">{{FINDING_IMPACT}}</dd></div>
+        </dl>
+      </li>
+    </ol>
+  </section>
+
+  <footer class="rule mt-16 pt-6">
+    <p class="t-table text-muted">
+      Generated by the <span class="mono" translate="no">weighted-loc</span> skill · format
+      <span class="mono" translate="no">references/report-html.md</span> · weights 1× / 2× / 5× / 10× / 20×.
+    </p>
+  </footer>
+
+</main>
+</body>
+</html>

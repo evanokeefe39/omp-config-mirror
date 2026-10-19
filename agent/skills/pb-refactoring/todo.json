@@ -1,0 +1,38 @@
+{
+  "phases": [
+    {
+      "phase": "refactoring: pin",
+      "items": [
+        "[main] Find or create this run's task per `skill://backlog-conventions` (search first: `task_search` / `backlog search`): kind `refactor`, one domain, `--dep <design task>` when pb-design handed this on; set it In Progress. Its ID names the `refactor/<id lowercased>-…` branch and the PR. No `backlog/` yet: init it per the skill's `## Setting up a repo`; neither MCP nor CLI available: stop",
+        "[app-backend-engineer|data-engineer|ux-engineer|iac-engineer|harness-engineer] Run `skill://how` over the affected subsystem to learn the contract, then write a characterization test, snapshot, or equivalence harness that captures current behaviour before any structure moves. If the area has no coverage, write the pin before touching structure. Type check and lint are not a pin",
+        "[main] Name the structure the code is missing (a state machine over scattered booleans, a registry over branching, a typed model over repeated shape assumptions). Boring code stays when the shape is already clear and local. The reshape must delete branches or invalid states, not add indirection"
+      ]
+    },
+    {
+      "phase": "refactoring: target",
+      "items": [
+        "[main] Name the target shape: what the module layout, types and call graph should be if built today — the new requirement treated as a foundational assumption, not bolted on. If the target crosses a function boundary, run pb-design for it; when it does not cross a function boundary, record `design skipped: local`",
+        "[app-backend-engineer|data-engineer|ux-engineer|iac-engineer|harness-engineer] Subtract before you add. Delete dead code, collapse one-caller wrappers, drop redundant validators, and remove orphan references before introducing the new shape. The smallest change that reaches the target shape ships. A speculative cleanup that \"might help\" gets reverted"
+      ]
+    },
+    {
+      "phase": "refactoring: move",
+      "items": [
+        "[app-backend-engineer|data-engineer|ux-engineer|iac-engineer|harness-engineer] Move in small behaviour-preserving steps, each keeping the pin green. For an API reshape, migrate every caller and delete the old API in the same wave (`rule://principle-migrate-callers-then-delete-legacy-apis`), with no compatibility shims and no parallel old-and-new paths. Spot-check every rename against the actual files, because renames silently miss usages in strings, prose and back-references. Scope: the file paths, the names being moved, the behaviour to hold"
+      ]
+    },
+    {
+      "phase": "refactoring: prove",
+      "items": [
+        "[app-backend-reviewer|data-reviewer|ux-reviewer|iac-reviewer|harness-reviewer] Prove behaviour is unchanged on the real artifact, not \"it compiles\" (`rule://principle-prove-it-works`). For larger reshapes, run an equivalence check: a script that diffs old-vs-new outputs, a recorded baseline replayed against the new code, or a smoke run on the matching surface (the domain row in `skill://operating-mode`). Own the verification yourself; do not trust a \"looks good\" summary",
+        "[main] Confirm the change is worth keeping: the success measure is reduced reader load — fewer layers to trace, less state to hold. If the diff does not lower reader load somewhere, revert it"
+      ]
+    },
+    {
+      "phase": "refactoring: land",
+      "items": [
+        "[main] Land the refactor in ordered, behaviour-preserving slices — a subtraction, then the reshape, then any follow-on cleanup — each green before the next. Squash-merge keeps only the PR title and body, so a slice that must stay separate on trunk is a stack layer (`pb-open-pr` Shape), not a commit. Commit and branch conventions per `skill://git-conventions` (Precedence). Then run pb-open-pr"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "phases": [
+    {
+      "phase": "data-quality-incident: contain",
+      "items": [
+        "[data-engineer] Establish the blast radius: what landed, where, since when, from the real rows and not from the alert's claim. The landed-nothing guard runs first: verify whether anything actually landed before diagnosing, because an incident with zero affected rows closes here"
+      ]
+    },
+    {
+      "phase": "data-quality-incident: diagnose",
+      "items": [
+        "[data-engineer] Write the root cause as a statement of mechanism with evidence, before writing any fix. One incident per run: never batch a second incident into the same dispatch; a second incident is a new dispatch"
+      ]
+    },
+    {
+      "phase": "data-quality-incident: fix",
+      "items": [
+        "[data-engineer] Implement the fix for the diagnosed mechanism only, in write-first increments with a recovery checkpoint. A fix that does not map to the written root cause is a new diagnosis, not a tweak"
+      ]
+    },
+    {
+      "phase": "data-quality-incident: verify-fix",
+      "items": [
+        "[data-reviewer] Prove the fix on the real data: affected rows repaired or quarantined, the failure mode re-tested to show it is closed, and the guard that would have caught this made to fire. Re-run the original failing case; a green check that never saw red proves nothing"
+      ]
+    },
+    {
+      "phase": "data-quality-incident: record",
+      "items": [
+        "[main] Propose the incident record rows (ISSUES/DEFECTS/lessons per the repo's own homes) with date, evidence and the root cause, appending them via `skill://imp-defect` in the project scope. Root cause is required here, unlike defect filing generally, because the diagnosis was the work. Then run pb-open-pr"
+      ]
+    }
+  ]
+}

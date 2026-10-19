@@ -1,0 +1,44 @@
+{
+  "phases": [
+    {
+      "phase": "source-discovery: classify",
+      "items": [
+        "[data-engineer] Classify the source — documented API (OpenAPI/Swagger), undocumented HTTP API, HTML-or-sitemap scrape, database, stream, file drop, paid API, or existing actor (e.g. Apify) — and write the classification as the contract's first field. The classification selects the recon method, and the per-source-type methods live in `skill://ingestion-best-practices`: the phases here are the same for every source type"
+      ]
+    },
+    {
+      "phase": "source-discovery: recon",
+      "items": [
+        "[data-engineer] Gather the cheap documented evidence before any probe: the OpenAPI spec, the docs, published rate-limit pages, robots.txt, ToS/AUP, an existing actor's marketplace listing, unofficial client libraries, and the predecessor's own notes. Record what was found and what was absent in the contract draft — an undocumented answer is a finding, not a gap to probe away blindly"
+      ]
+    },
+    {
+      "phase": "source-discovery: probe",
+      "items": [
+        "[data-engineer] Before the first probe runs, declare the probe budget in the contract draft: max requests, max wall time and max cost. A probe that would exceed the budget stops and records what it found; it does not escalate the spend",
+        "[data-engineer] Probe the undocumented or adversarial surface under the declared budget and record each answer in the contract with the request that produced it: whether the client's TLS fingerprint passes or is graded and challenged, whether a WAF/bot challenge intervenes, whether 202 means accepted or is a challenge rather than a retry, and whether a refusal burns the session",
+        "[data-engineer] Keep the probe log as executable cells, not prose: one cell per avenue tested — a transport or library (`httpx2`, `curl_cffi`, `crawlee`, `scrapy`, `scrapling`, a plain client), an endpoint, an auth variant or a session model — each printing the request it sent and the evidence it returned (status, headers, body shape), so a reviewer can re-run any cell and see the same result"
+      ]
+    },
+    {
+      "phase": "source-discovery: record",
+      "items": [
+        "[data-engineer] Write the per-source contract with every field answered from evidence: transport and impersonation target, auth, pagination, rate limits and which kind of 429, retry/backoff policy, special statuses (202/403/5xx), pacing and concurrency, egress/proxy routing, unit cost, failure modes, and raw retention/replay. Check the fields against `skill://ingestion-standards` at the project's maturity stage"
+      ]
+    },
+    {
+      "phase": "source-discovery: walkthrough notebook",
+      "items": [
+        "[data-engineer] Build the investigation notebook beside the contract — `docs/source-discovery/<source>.ipynb` — whose cells are the probe log itself: the avenues tested with their libraries and methods, the evidence each returned, the raw shape observed, the parse decision and its reason, what was rejected and why, the final shape, and every ODC/ODCS contract term the source forces or suggests. A cell that cannot be re-run against the source, or that asserts a finding without the output that proves it, is a note and does not belong in the notebook"
+      ]
+    },
+    {
+      "phase": "source-discovery: gate",
+      "items": [
+        "[data-reviewer] Gate the contract: every field answered or explicitly blocked — an unanswered field is a blocker, not a TODO — and a registration test exists for the source. Nothing downstream starts on an ungated contract",
+        "[data-reviewer] Gate the notebook: the avenue table lists every transport and library tried with the evidence that chose the winner, the rejected alternatives carry a reason, and each cell re-runs clean on its own — a human can follow the investigation end to end without asking the author, and re-run any cell that produced a finding",
+        "[main] On a gated contract, `run pb-data-source-onboarding` to implement the producer on it; on a blocked field, stop and record which evidence is missing and who can supply it"
+      ]
+    }
+  ]
+}

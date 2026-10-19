@@ -1,0 +1,158 @@
+#!/bin/sh
+# prepare-commit-msg — stamp WHICH agent made a commit onto the commit itself.
+#
+# managed by omp: agent/scripts/git-hooks/prepare-commit-msg
+#   This file is the SOURCE. The copy git actually runs is installed into the
+#   directory `core.hooksPath` points at (`~/.git-hooks` on this machine) by
+#   `agent/scripts/install-git-hooks.sh`. Edit this file and re-run the
+#   installer; never edit the installed copy.
+#
+# What it does, in order:
+#   1. runs lefthook's own `prepare-commit-msg` when the repo configures one, so
+#      a repo that already relies on lefthook here keeps working;
+#   2. appends `Agent-Identity: <value>` from `$OMP_IDENTITY`, which the
+#      `omp-identity` extension sets at session start for every shell the
+#      session spawns (agent/extensions/omp-identity.ts).
+#
+# It never blocks a commit. Every path exits 0, including every failure: the
+# daily backup sync commits on its own schedule and must not be gated on this.
+#
+# `$OMPCODE` (set by omp in the shells it spawns) guards step 2 only, so a
+# human's commits get no trailer. Step 1 is deliberately NOT guarded: the
+# lefthook handoff has to behave for every commit, human or agent, exactly as it
+# did before this file existed.
+#
+# SMOKE TEST — run in a throwaway repo; both cases must be checked.
+#
+#   T="$(mktemp -d)"; cd "$T"; git init -q -b work .
+#   git config core.hooksPath "$(cd <repo>/agent/scripts && pwd)/git-hooks"
+#
+#   # (a) agent commit: the trailer must appear
+#   echo a > a.txt; git add -A
+#   OMPCODE=1 OMP_IDENTITY='harness=probe omp=probe model=probe session=probe' \
+#     git commit -q -m 'chore: with identity'
+#   git log -1 --format=%B
+#   #   chore: with identity
+#   #   <blank>
+#   #   Agent-Identity: harness=probe omp=probe model=probe session=probe
+#
+#   # (b) human commit: it must not appear
+#   echo b > b.txt; git add -A; git commit -q -m 'chore: without identity'
+#   git log -1 --format=%B
+#   #   chore: without identity
+#
+#   # (c) idempotence: re-running on the same message replaces, never duplicates
+#   OMPCODE=1 OMP_IDENTITY='harness=probe2 omp=probe2 model=probe2 session=probe2' \
+#     git commit -q --amend --no-edit
+#   git log -1 --format=%B
+#   #   ... exactly one Agent-Identity line, carrying probe2
+
+# Deliberately not `set -e`: a failed step must not become a failed commit.
+set +e
+
+msg_file="${1:-}"
+# A hook invoked by hand, or by a git old enough to pass nothing, must be a no-op.
+[ -n "$msg_file" ] || exit 0
+[ -f "$msg_file" ] || exit 0
+
+# --- 1) lefthook's prepare-commit-msg, when this repo configures one ----------
+#
+# Env handling is mirrored from the lefthook wrappers beside the installed copy
+# (`commit-msg`, `pre-commit` in ~/.git-hooks, written by lefthook itself):
+# LEFTHOOK=0 disables it outright and LEFTHOOK_VERBOSE turns on tracing.
+#
+# Only called when a config that names this hook exists. `lefthook run` with no
+# config still exits 0, but prints a "no config files found" notice on every
+# commit in every repo, and with a config it prints a core.hooksPath banner —
+# neither belongs on an unrelated commit. Skipping is the fail-open direction:
+# today no global prepare-commit-msg exists at all, so nothing regresses.
+if [ "$LEFTHOOK" != "0" ]; then
+  lefthook_config="${LEFTHOOK_CONFIG:-}"
+  if [ -z "$lefthook_config" ]; then
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+    for stem in lefthook .lefthook; do
+      for ext in yml yaml json toml; do
+        for candidate in "$repo_root/$stem.$ext" "$repo_root/.config/$stem.$ext"; do
+          # The directory names lefthook itself searches: lefthook, .lefthook, .config/lefthook.
+          if [ -n "$repo_root" ] && [ -f "$candidate" ] && grep -q 'prepare-commit-msg' "$candidate" 2>/dev/null; then
+            lefthook_config="$candidate"
+          fi
+        done
+      done
+    done
+  elif ! grep -q 'prepare-commit-msg' "$lefthook_config" 2>/dev/null; then
+    lefthook_config=""
+  fi
+
+  if [ -n "$lefthook_config" ]; then
+    if [ "$LEFTHOOK_VERBOSE" = "1" -o "$LEFTHOOK_VERBOSE" = "true" ]; then
+      set -x
+    fi
+
+    if test -n "$LEFTHOOK_BIN"; then
+      "$LEFTHOOK_BIN" run "prepare-commit-msg" "$@"
+    elif command -v lefthook >/dev/null 2>&1; then
+      lefthook run "prepare-commit-msg" "$@"
+    elif command -v lefthook.exe >/dev/null 2>&1; then
+      lefthook.exe run "prepare-commit-msg" "$@"
+    elif command -v lefthook.bat >/dev/null 2>&1; then
+      lefthook.bat run "prepare-commit-msg" "$@"
+    else
+      # Fall back to the binary a package manager installed inside this repo.
+      # The OS/arch names are lefthook's own; the wrappers lefthook generates use
+      # `uname` raw, which yields "mingw64_nt-…" on Git for Windows and so never
+      # matches there — hence the explicit mapping.
+      case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) lefthook_os="windows" ;;
+        Darwin) lefthook_os="darwin" ;;
+        *) lefthook_os="linux" ;;
+      esac
+      case "$(uname -m 2>/dev/null)" in
+        x86_64|amd64) lefthook_cpu="x64" ;;
+        aarch64|arm64) lefthook_cpu="arm64" ;;
+        *) lefthook_cpu="" ;;
+      esac
+      found=""
+      for candidate in \
+        "$repo_root/node_modules/lefthook-${lefthook_os}-${lefthook_cpu}/bin/lefthook.exe" \
+        "$repo_root/node_modules/lefthook-${lefthook_os}-${lefthook_cpu}/bin/lefthook" \
+        "$repo_root/node_modules/@evilmartians/lefthook/bin/lefthook-${lefthook_os}-${lefthook_cpu}/lefthook.exe" \
+        "$repo_root/node_modules/@evilmartians/lefthook/bin/lefthook-${lefthook_os}-${lefthook_cpu}/lefthook" \
+        "$repo_root/node_modules/@evilmartians/lefthook-installer/bin/lefthook.exe" \
+        "$repo_root/node_modules/@evilmartians/lefthook-installer/bin/lefthook"
+      do
+        if [ -n "$repo_root" ] && [ -f "$candidate" ]; then
+          found="$candidate"
+          break
+        fi
+      done
+      if [ -n "$found" ]; then
+        "$found" run "prepare-commit-msg" "$@"
+      else
+        echo "prepare-commit-msg: $lefthook_config configures lefthook but no lefthook binary was found; skipping it (fail open)" >&2
+      fi
+    fi
+
+    set +x
+  fi
+fi
+
+# --- 2) the agent identity trailer ------------------------------------------
+#
+# $OMPCODE is the "an agent spawned this shell" flag; $OMP_IDENTITY carries the
+# value. Both come from the session's environment. `--if-exists replace` keeps an
+# amend or a re-commit idempotent: the trailer is rewritten, never duplicated.
+if [ -n "$OMPCODE" ] && [ -n "$OMP_IDENTITY" ]; then
+  # Make the value one line WITHOUT touching the spaces that separate the
+  # `key=value` parts: the extension emits `harness=… omp=… model=… session=…`
+  # on purpose. A newline from any other producer writes a malformed block (a
+  # stray line after the trailer) that `--if-exists replace` can then no longer
+  # find, so an amend duplicates it and `%(trailers:key=Agent-Identity)` stops
+  # resolving it. Folding every whitespace character was the first attempt and it
+  # mangled the separators (`harness=X_omp=Y`); measured 2026-10-12.
+  identity="$(printf '%s' "$OMP_IDENTITY" | tr '\n\r' ' ' | tr -s ' ')"
+  git interpret-trailers --in-place --if-exists replace \
+    --trailer "Agent-Identity: $identity" "$msg_file"
+fi
+
+exit 0

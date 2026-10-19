@@ -1,0 +1,35 @@
+{
+  "phases": [
+    {
+      "phase": "data-schema-migration: read-state",
+      "items": [
+        "[data-engineer] Read the current schema, the migration log, and the consumers of every object the change touches; classify each as stored-derived, view, or source. Read every pending migration before executing anything; this is an absolute rule after the 2026-06-10 DROP TABLE incident"
+      ]
+    },
+    {
+      "phase": "data-schema-migration: write-migration",
+      "items": [
+        "[data-engineer] Write the migration under the repo's DDL regime: Alembic owns DDL, hand-written `CREATE TABLE` is forbidden, and `ALTER` is used rather than `DROP` unless the brief explicitly authorizes destructive steps. Destructive steps require their own named authorization, and the `migration-guard` hook fires on DROP/TRUNCATE on a migration path"
+      ]
+    },
+    {
+      "phase": "data-schema-migration: ship-with-code",
+      "items": [
+        "[data-engineer] Land the migration in the same change as the code that needs the new shape (producers, queries, tests), because a migration that ships alone ships broken. The PR body states the contract change"
+      ]
+    },
+    {
+      "phase": "data-schema-migration: verify-copy",
+      "items": [
+        "[data-reviewer] Verify on a COPY of the store: apply, run the read/write paths that depend on the change, confirm row counts and nullability, and never the live store first. The copy-restore drill proves both directions: the migration applies and the data survives"
+      ]
+    },
+    {
+      "phase": "data-schema-migration: record",
+      "items": [
+        "[doc-writer] Update the migration README/docs entry for the new migration so the inventory gains its row",
+        "[main] Append the ledger rows the run produced via `skill://imp-change` and `skill://imp-verify`, and run pb-open-pr"
+      ]
+    }
+  ]
+}

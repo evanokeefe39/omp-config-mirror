@@ -1,0 +1,144 @@
+searxng:
+  endpoint: http://localhost:8888
+setupVersion: 2
+modelRoles:
+  default: openrouter/deepseek/deepseek-v4.1-flash:off
+  vision: openrouter/z-ai/glm-5.3-flash
+  plan: anthropic/claude-opus-5-5:medium
+  # Judge: the weighted-loc extension's block tiering, and omp's own typed
+  # judgments (auto-thinking, ttsr, find). Set explicitly because the role was
+  # unset, so `@judge` fell through to `default` (deepseek) — the extension
+  # judged every block with a chat model instead of a decisions model.
+  # `~typesafe/jev-latest` is a native System One judge (api
+  # `openrouter-decisions`), 64k-token window, input-only pricing ($0.042/M,
+  # output free). See docs/models.md and omp://environment-variables.md.
+  judge: openrouter/~typesafe/jev-latest
+  task: openrouter/deepseek/deepseek-v4.1-flash
+  smol: openrouter/deepseek/deepseek-v4.1-flash:off
+  commit: openrouter/deepseek/deepseek-v4.1-flash:off
+  advisor: openrouter/deepseek/deepseek-v4.1-flash:off
+  worker: openrouter/deepseek/deepseek-v4.1-flash
+  kimi: anthropic/claude-opus-5-5:medium
+  web: anthropic/claude-haiku-4-5
+cycleOrder:
+  - smol
+  - worker
+  - default
+  - kimi
+display:
+  showTokenUsage: true
+  cacheMissMarker: true
+  shimmer: kitt
+  pinnedAgents: full
+  hideToolActivity: false
+  showTurnTime: true
+personality: default
+advisor:
+  enabled: false
+  syncBacklog: "1"
+  immuneTurns: 3
+loop:
+  mode: reset
+compaction:
+  enabled: true
+  thresholdPercent: 35
+  handoffSaveToDisk: true
+  methodOrder:
+    - handoff
+    - remote
+    - shake
+    - soft
+memory:
+  backend: local
+github:
+  enabled: true
+todo:
+  remindersMax: 0
+  eager: always
+task:
+  eager: preferred
+  maxConcurrency: 4
+  maxRecursionDepth: 2
+  maxRuntimeMs: 7200000
+  isolation:
+    enabled: true
+    commits: ai
+  agentAdvisor:
+    task: "on"
+  enableEffort: true
+exa:
+  enabled: false
+skills:
+  ignoredSkills:
+    []
+  customDirectories:
+    - ~/.omp/agent/skills
+    - ~/.omp/agent/skills/data
+  enablePiUser: false
+  enableClaudeUser: false
+  enableClaudeProject: false
+  enableAgentsUser: true
+defaultThinkingLevel: "off"
+hideThinkingBlock: true
+composer:
+  shape: box
+images:
+  describeForTextModels: false
+isolation:
+  backend: auto
+textVerbosity: medium
+followUpMode: one-at-a-time
+ttsr:
+  repeatGap: 5
+sharpshooter:
+  model: ""
+edit:
+  mode: hashline
+  modelVariants:
+    deepseek-flash: patch
+    glm-5.3-flash: patch
+astGrep:
+  enabled: true
+tools:
+  artifactSpillThreshold: 20
+  artifactTailBytes: 5
+  artifactHeadBytes: 5
+plan:
+  autosave: true
+secrets:
+  enabled: true
+theme:
+  dark: obsidian
+symbolPreset: unicode
+statusLine:
+  preset: default
+  separator: pipe
+  contextLine: embedded
+  sessionAccent: true
+  transparent: false
+  compactThinkingLevel: false
+  showHookStatus: true
+tui:
+  resizeScrollback: rebuild
+  textSizing: false
+  titleSpinner: braille
+  tight: false
+terminal:
+  showProgress: false
+dev:
+  autoqaConsent: granted
+retry:
+  fallbackChains:
+    web:
+      - web/parallel
+      - web/hosted
+      - web/exa
+      - web/firecrawl
+      - web/startpage
+      - web/duckduckgo
+      - web/ecosia
+      - web/google
+      - web/mojeek
+      - web/public
+claudeResets:
+  autoRedeem: "yes"

@@ -1,0 +1,38 @@
+{
+  "phases": [
+    {
+      "phase": "release: decide",
+      "items": [
+        "[main] **Confirm the profile.** Read the repo's `Release profile:` line in its `AGENTS.md`. `continuous`: stop and say so — merge is ship. `package` with no release-please files: stop and route to `pb-new-project`'s release step",
+        "[main] **Find what is pending.** The release PR is the open PR labelled `autorelease: pending` (`gh pr list --label \"autorelease: pending\" --json number,title,createdAt`); none means nothing has merged since the last tag. List milestones with `backlog milestone list --show-completed`: a milestone whose tasks are all `Done` is listed as completed, and the bare command collapses that section",
+        "[main] **Cut now, or stop.** Release when any of these holds: a milestone **other than `maintenance`** whose tasks are all `Done` has its PRs on trunk; the release PR has been open 7 days or more (the time cap, so `maintenance` work still ships); or the user asked. `maintenance` never triggers a release and is never closed — it is the standing home for unplanned work, and its tasks ship under the cap. Otherwise report the release PR, its age, each open milestone's done/total, and stop"
+      ]
+    },
+    {
+      "phase": "release: check",
+      "items": [
+        "[main] **Check the proposed version and notes.** The version follows the squash-commit types since the last tag (`skill://git-conventions` `## PR titles`): any `!` or `BREAKING CHANGE` is major (minor before 1.0), any `feat` minor, otherwise patch. A wrong version is fixed with `release-as` for one release, per `skill://git-conventions`, never by editing the version or changelog by hand. Every note line is a merged PR title; one that misdescribes its change is reported, since a released entry is never edited",
+        "[main] **Check the release branch, since nothing else does.** The release PR is opened with `GITHUB_TOKEN`, so no required check runs on it (`skill://git-conventions` `## Releases`). Read the `validate-release-pr` job when the repo has it; otherwise check out the release branch and run the repo's own checks. Confirm every file that states the version (`extra-files`, lockfiles) moved to the proposed version together"
+      ]
+    },
+    {
+      "phase": "release: release",
+      "items": [
+        "[main] **Merge the release PR.** `gh pr merge <N> --squash`. It carries no task link and no independent verdict by design: it is generated output, and this playbook's check phase is its verification"
+      ]
+    },
+    {
+      "phase": "release: verify",
+      "items": [
+        "[main] **Verify what the release made.** After release-please's run on trunk finishes (`gh run list --workflow release-please.yml -L 1`), confirm: the tag exists on the remote (`git ls-remote --tags origin <tag>`), the GitHub Release exists (`gh release view <tag>`), the version file on trunk equals the tag, and the changelog's top entry is that version. A publish job, when the repo has one, concluded `success`",
+        "[main] **Fetch and smoke the artifact.** Install or fetch the published artifact at exactly the tagged version from where users get it (registry, release asset, `git checkout <tag>`) and run its documented entrypoint once. A repo that publishes nothing smokes the tagged commit instead. A green workflow is not proof that the artifact works"
+      ]
+    },
+    {
+      "phase": "release: close",
+      "items": [
+        "[main] **Close the milestones this release completed.** For each milestone whose tasks are all `Done` and on trunk at the tag, **except `maintenance`**, which is never closed: `backlog milestone rename \"v0.N <goal>\" \"v0.N <goal> (<tag>)\"` so the shipped version stays on the milestone and its tasks — the `v0.N` prefix was a target and stays as written; the tag is the version that shipped — then `backlog milestone archive \"v0.N <goal> (<tag>)\"`. Commit the backlog change on a `chore/` branch, ask the user to merge it, and land it through `pb-land`'s self-verified exception — it is a backlog record, not an instruction. A milestone still open keeps its title and ships in a later release; when it will miss the release its prefix targets, rename it to the next target (`### Releases and milestones`)"
+      ]
+    }
+  ]
+}

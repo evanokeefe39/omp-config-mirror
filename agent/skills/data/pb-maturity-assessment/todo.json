@@ -1,0 +1,22 @@
+{
+  "phases": [
+    {
+      "phase": "maturity-assessment: locate-ladder",
+      "items": [
+        "[scout] Find the domain's own maturity ladder: search the harness docs and skills for a scale the domain itself owns, and name the ladder found or record that none exists"
+      ]
+    },
+    {
+      "phase": "maturity-assessment: classify",
+      "items": [
+        "[main] Place the project on the ladder found; if none exists, place it with the fallback ladder at the end of `skill://pb-maturity-assessment` — read the skill body on demand. Place it on the observable signals (team size, number of sources/services, who consumes the output, whether a change can break someone else), not on ambition"
+      ]
+    },
+    {
+      "phase": "maturity-assessment: declare",
+      "items": [
+        "[main] Declare the level and what it makes proportionate: name at least one standard the level requires and one it makes overkill, so downstream standards do not overcook a hobby project"
+      ]
+    }
+  ]
+}

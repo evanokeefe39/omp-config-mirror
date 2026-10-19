@@ -1,0 +1,18 @@
+{
+  "phases": [
+    {
+      "phase": "investigation: orient",
+      "items": [
+        "[main] Run `skill://how` over the subsystem. For a motivation question, also review regression history: `git log --follow -p`, `git blame`, `gh pr view --json`, and the scope's `DEFECTS.md` / `IMPROVEMENTS.md`. Decompose a complex question into 2-4 angles and dispatch them as one `[scout]` batch"
+      ]
+    },
+    {
+      "phase": "investigation: answer",
+      "items": [
+        "[main] Produce the explanation in the `skill://how` output shape (Overview / Key Concepts / How It Works / Where Things Live / Gotchas), or a recommendation with a tradeoffs table when the request is a decision between alternatives",
+        "[main] Include real judgment with reasons on any \"are we sure?\" question; push back when the premise is wrong",
+        "[main] Apply `skill://unslop` to the reply"
+      ]
+    }
+  ]
+}

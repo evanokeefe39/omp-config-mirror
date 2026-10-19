@@ -1,0 +1,44 @@
+{
+  "phases": [
+    {
+      "phase": "feature: orient",
+      "items": [
+        "[main] Find or create this run's task per `skill://backlog-conventions` (search first: `task_search` / `backlog search`): kind `feature`, one domain, `--dep <design task>` when pb-design handed this on; set it In Progress. Its ID names the `feature/<id lowercased>-…` branch and the PR. No `backlog/` yet: init it per the skill's `## Setting up a repo`; neither MCP nor CLI available: stop",
+        "[scout] Run `skill://how` over the affected subsystem"
+      ]
+    },
+    {
+      "phase": "feature: design",
+      "items": [
+        "[main] Pick the depth path from pb-design's risk-and-depth table. A trivial or local change records `design skipped: <path>` and goes on; anything else: run pb-design and build from its design.md",
+        "[main] Write the throughput checkpoint as four todo items. A dimension that genuinely does not apply (single file, no fan-out) keeps its item with `n/a: <reason>` rather than being dropped:",
+        "[main] Throughput checkpoint: **Blocking first steps.** Gates run before fan-out.",
+        "[main] Throughput checkpoint: **Independent workstreams.** Disjoint files, services, or layers parallelize. Shared writes serialize.",
+        "[main] Throughput checkpoint: **Shared mutable state.** Default to splitting the target — one owner per file, key or state directory, merged only at the read boundary. Serialize only for real invariants.",
+        "[main] Throughput checkpoint: **Smallest safe decomposition.** If one worker is best, name why."
+      ]
+    },
+    {
+      "phase": "feature: build",
+      "items": [
+        "[main] Record the restore point on the matching surface before the first edit; the scope's VERIFY.md says how (for `~/.omp`: `git rev-parse HEAD`, `git status --short`, and `agent/scripts/omp-git-sync.sh status` alive)",
+        
+        "[app-backend-engineer|data-engineer|ux-engineer|iac-engineer|harness-engineer] Implement against a specific scope: file paths, the named data shape and its organizing structure per `rule://principle-model-the-domain` (a state machine over scattered booleans, a table/registry over branching, a typed model over repeated shape assumptions, chosen before the delegate writes logic), and success criteria. Review the diff yourself. When the implementation admits multiple valid shapes (error handling, abstraction layer, test structure), write out the competing shapes and their tradeoffs and pick one with a stated reason. Mandatory: no skip-with-reason escape, and the laziness principle does not override it"
+      ]
+    },
+    {
+      "phase": "feature: verify",
+      "items": [
+        "[app-backend-reviewer|data-reviewer|ux-reviewer|iac-reviewer|harness-reviewer] Verify on the matching surface (the domain row in `skill://operating-mode`). \"Inconclusive\" or a wrong-surface check is not a pass. Flag it. If improving existing feature then make sure there is a measurable improvement over existing capability and verify new work hasn't degraded it.",
+        "[main] Build, verify and commit each small unit before the next (`rule://principle-sequence-verifiable-units`). Squash-merge keeps only the PR title and body, so a unit that must survive on trunk on its own is a stack layer (`pb-open-pr` Shape), not a commit; commits inside a PR are working history. Commit and branch conventions per `skill://git-conventions` (Precedence)",
+        "[scout|task] For a contested design, run `skill://cross-domain-blindspot-audit` before shipping"
+      ]
+    },
+    {
+      "phase": "feature: land",
+      "items": [
+        "[main] run pb-open-pr"
+      ]
+    }
+  ]
+}

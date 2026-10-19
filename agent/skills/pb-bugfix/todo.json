@@ -1,0 +1,37 @@
+{
+  "phases": [
+    {
+      "phase": "bugfix: reproduce",
+      "items": [
+        "[main] Find the bug's task per `skill://backlog-conventions` (search first: `task_search` / `backlog search`), or create one with kind `bugfix`, one domain, and a body of steps to reproduce, expected, actual, environment, evidence; set it In Progress. Never a GitHub issue. Its ID names the `bugfix/<id lowercased>-…` branch and the PR. No `backlog/` yet: init it per the skill's `## Setting up a repo`; neither MCP nor CLI available: stop",
+        "[app-backend-engineer|data-engineer|ux-engineer|iac-engineer|harness-engineer] Reproduce it on the matching surface (the domain row in `skill://operating-mode`). Do not hand the repro to the user. Diagnose by driving the instrumented runtime: synthesize the trigger, tighten conditions, or add instrumentation until it fires"
+      ]
+    },
+    {
+      "phase": "bugfix: find the cause",
+      "items": [
+        "[app-backend-engineer|data-engineer|ux-engineer|iac-engineer|harness-engineer] Binary-search the cause. Form the candidate hypotheses, then rule them out until one survives, taking the split that cuts the most remaining problem space each pass. Use `skill://how` over the subsystem and review regression history (`git log --follow -p`, `git blame`, `gh pr view --json`, the scope's `DEFECTS.md` / `IMPROVEMENTS.md`) to seed them. Read instrumentation as the code runs rather than guessing. Run a long hunt as an async `bash` job and re-check on completion; never poll. Confirm the surviving mechanism with runtime evidence before the fix"
+      ]
+    },
+    {
+      "phase": "bugfix: fix",
+      "items": [
+        "[main] Record the restore point on the matching surface before the first edit; the scope's VERIFY.md says how (for `~/.omp`: `git rev-parse HEAD`, `git status --short`, and `agent/scripts/omp-git-sync.sh status` alive)",
+        "[app-backend-engineer|data-engineer|ux-engineer|iac-engineer|harness-engineer] Implement the fix for the diagnosed mechanism only, with a specific scope (the file paths, the mechanism, the acceptance). When the fix changes an interface, data shape or more than one module: run pb-design first; otherwise record `design skipped: <path>`. Review the diff yourself"
+      ]
+    },
+    {
+      "phase": "bugfix: verify",
+      "items": [
+        "[app-backend-reviewer|data-reviewer|ux-reviewer|iac-reviewer|harness-reviewer] Rerun the original repro on the same surface; it must now pass. \"Inconclusive\" or a wrong-surface check is not a pass. Unit tests show branch behaviour, not bug absence",
+        "[main] Land the failing repro before the fix in git history, citing `skill://tdd`; commit and branch conventions per `skill://git-conventions` (Precedence). Skip it only when the test would be expensive, integration-heavy, or unclear, and say so"
+      ]
+    },
+    {
+      "phase": "bugfix: land",
+      "items": [
+        "[main] run pb-open-pr"
+      ]
+    }
+  ]
+}
