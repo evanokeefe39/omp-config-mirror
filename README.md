@@ -3,7 +3,7 @@
 The mechanism half of a private coding-agent harness, published at each release so
 that an `Agent-Identity` trailer in a commit names the release its tree came from.
 
-Published from `evanokeefe39/omp-home` at `omp-home-v0.7.1`. This repo is PRIVATE until
+Published from `evanokeefe39/omp-home` at `omp-home-v0.8.0`. This repo is PRIVATE until
 re-publicisation lands (OMP-26), so until then that tag resolves for its owner
 only. It is a build artifact: **do not open PRs here** — edit the harness and cut
 a release.

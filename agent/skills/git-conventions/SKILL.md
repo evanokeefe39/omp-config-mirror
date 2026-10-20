@@ -57,13 +57,19 @@ Every agent commit carries one trailer naming the agent that made it, so work ca
 be attributed to a harness version, an omp build and a model:
 
 ```
-Agent-Identity: harness=omp-config-mirror@omp-home-v0.5.0 omp=18.6.0 model=claude-opus-5-5 session=01a12ab4
+Agent-Identity: harness=omp-config-mirror@omp-home-v0.6.0+1 commit=a1b2c3d4e5f6-dirty-9f8e7d6c omp=18.12.2 model=claude-opus-5-5 session=01a12ab4
 ```
 
 - **Written by machinery, never typed.** A global git hook
   (`~/.git-hooks/prepare-commit-msg`, installed from `agent/scripts/git-hooks/`)
   reads `OMP_IDENTITY`, which an omp extension captures at session start. An
   agent does nothing, and nothing has to remember.
+- **Never `export OMP_IDENTITY` in an agent shell.** Every later commit in that
+  shell reads the environment, so a probe that exports its own value re-stamps
+  work that has nothing to do with it — measured 2026-10-19: two commits on a
+  feature branch carried a headless probe's `session=`, and only
+  `agent/scripts/omp-identity-rollup.sh` made the disagreement visible. Pass it
+  per command instead: `env OMP_IDENTITY='…' bun agent/scripts/harness-identity.ts`.
 - **The harness part names a release, not the private repo.** `~/.omp`
   (`omp-home`) is private, so `omp-home-v0.5.0` would resolve for nobody but its
   owner. Each release publishes the harness's mechanism — skills, rules, hooks,
@@ -86,13 +92,25 @@ Agent-Identity: harness=omp-config-mirror@omp-home-v0.5.0 omp=18.6.0 model=claud
   reproduction — a `-dirty` tree is not published at all, and the mirror carries no
   ledgers, audits or transcripts — so read it as "this release, plus drift", never
   as byte-for-byte provenance.
+- **The exact commit is on the trailer, not only the release.** `commit=` is
+  `git rev-parse --short=12 HEAD` in the harness checkout, so the identity resolves
+  to a commit whatever branch or worktree the session ran from; `harness=` names
+  the release that tree descends from, which is a different fact. A dirty tree
+  appends `-dirty-<hash>`, the first 8 hex of the sha256 of `git diff HEAD`, so two
+  dirty trees with the same changes carry the same identity and a different edit
+  does not — untracked files are not part of it, matching `git describe --dirty`.
+  One computation serves both surfaces: `agent/scripts/harness-identity.ts`, which
+  the extension imports and `pb-land` runs directly to stamp the card it sets
+  `Done` (`skill://backlog-conventions`).
 - **Agent shells only.** The hook does nothing unless `OMPCODE` is set, so a human
   commit stays clean. A missing trailer means human, sync or unknown — never a
   guessed value.
 - **A signal, not provenance.** It exists to show which identities produce work
   that holds up. Small drift is expected and accepted; do not add exactness
   machinery (drift detection, per-path dirty scoping, byte-exact versions) without
-  a real question that needs it.
+  a real question that needs it. `commit=` is that one addition, and it answers
+  one: comparing outcomes across harness changes needs the commit a session ran
+  from, not only the release its tree had drifted from (OMP-10).
 - **The hook can never block a commit.** It always exits 0, and writes no trailer
   at all when it cannot build one.
 - **Coverage is not total, and the gap is silent.** The hook fires only where

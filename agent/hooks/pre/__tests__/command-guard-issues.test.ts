@@ -37,6 +37,8 @@ const cases: [string, string, Want][] = [
 	["gh issue view 89 -R evanokeefe39/example-ext", "viewing is a read", "allow"],
 	["gh issue close 14 -R evanokeefe39/jobs-repo -c 'Moved to Backlog OMP-90'", "closing an existing issue, pointing at its task", "allow"],
 	["gh issue comment 14 -b 'Moved to Backlog'", "commenting on an existing issue", "allow"],
+	["gh issue comment 8 --body 'the command guard blocks gh issue create now'", "OMP-11: a comment body quoting the banned command", "allow"],
+	["gh issue close 8 --comment 'see gh issue create for the old route'", "OMP-11: a closing comment quoting the banned command", "allow"],
 	["gh api repos/evanokeefe39/jobs-repo/issues --paginate", "api GET of the collection is a read", "allow"],
 	["gh api repos/o/r/issues/14/comments -f body='Moved to Backlog'", "a comment POST is not issue creation", "allow"],
 	["gh api repos/o/r/issues/14 -X PATCH -f state=closed", "closing via api PATCH on one issue", "allow"],

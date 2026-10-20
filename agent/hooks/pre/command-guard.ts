@@ -41,8 +41,11 @@
  *
  * KNOWN FALSE POSITIVE: matching is a substring test over the whole command, so a
  * heredoc or doc that merely MENTIONS the banned phrase is blocked. Observed live
- * while writing documentation about this hook. Fix candidate: strip heredoc
- * bodies and quoted spans before matching.
+ * while writing documentation about this hook. The structural view now reads the
+ * command as a program — quoted spans and heredoc bodies are data, and a text hit
+ * is dropped only when every segment is understood — which fixed the recorded
+ * instances; the allowances that remain are listed, one literal command each, in
+ * `hooks/pre/__tests__/fixtures/false-positive-families.md`.
  *
  * WHY A HOOK AND NOT ONLY A RULE
  * A rule shapes the first attempt; a hook stops an act already intended. Every
@@ -749,9 +752,20 @@ export default function (pi: HookApi): void {
 			}
 		}
 
-		for (const check of CHECKS) {
-			const hit = check.match(command);
-			if (!hit) continue;
+		// ── THE FAIL-CLOSED VERDICT (OMP-13) ──
+		// Each check is judged by two views of the same rule: the text matcher (what
+		// `origin/main` blocks — the floor) and the structural matcher (the program
+		// that will actually run, with quoted words as data). The structural view may
+		// ALLOW what the text view blocks only when the whole command is understood;
+		// anything unmodelled keeps the text verdict, so an under-block against main
+		// is impossible by construction.
+		const analysis = analyse(command);
+		for (const check of ALL_CHECKS) {
+			const textHit = check.match(command);
+			const structHit = STRUCTURAL[check.id]?.(analysis) ?? null;
+			if (!textHit && !structHit) continue;
+			if (textHit && !structHit && analysis.understood) continue;
+			const hit = structHit ?? textHit ?? check.id;
 			if (check.id === "no-push-to-main" && (await createsProtected())) {
 				pi.appendEntry(RECORD_TYPE, { guard: "bootstrap-first-push", cwd: ctx.cwd, at: new Date().toISOString() });
 				continue;
@@ -760,6 +774,7 @@ export default function (pi: HookApi): void {
 			pi.appendEntry(RECORD_TYPE, {
 				guard: check.id,
 				matched: hit.slice(0, 200),
+				understood: analysis.understood,
 				cwd: ctx.cwd,
 				at: new Date().toISOString(),
 			});
@@ -1078,3 +1093,1244 @@ async function mergeGateProblem(pi: HookApi, command: string, cwd?: string): Pro
 	}
 	return null;
 }
+interface Word {
+	/** The word as the shell would pass it: quotes removed, escapes resolved. */
+	text: string;
+	/** True when any part of the word was quoted or escaped. A quoted word is DATA, never a command. */
+	quoted: boolean;
+}
+/** One simple command: the words between two shell separators. */
+type Segment = Word[];
+
+/** A command handed to another program as code: a shell string, an interpreter payload, or an argument list. */
+interface Payload {
+	program: string;
+	/** The payload as text: what a message quotes, and what the text rules read. */
+	text: string;
+	/** True when `text` is a SHELL command line, so it is tokenized as a command. */
+	shell: boolean;
+	/** The command as an argument list, when the executor execs the words directly. */
+	words?: Segment;
+}
+
+/** What a check sees: the raw text (cwd resolution, messages), its structure, and any payloads. */
+const MAX_RECURSION = 3;
+const SHELLS: Record<string, true> = { sh: true, bash: true, dash: true, zsh: true, ksh: true, ash: true };
+/**
+ * Shell keywords that introduce a command list.
+ *
+ * The tokenizer splits on `;`, `&&`, `|`, `&`, newlines and parens — not on
+ * keywords — so `for i in 1; do pip install x; done` arrives as the segment
+ * `do pip install x` and, without this, `do` is read as the program. Measured in
+ * review of PR #106: every keyword form was allowed where main's text matcher
+ * refused it.
+ */
+const SHELL_KEYWORDS: Record<string, true> = {
+	if: true, then: true, elif: true, else: true, fi: true, while: true, until: true, do: true, done: true,
+	for: true, in: true, select: true, case: true, esac: true,
+	// A group opener is not a program either: `{ bash -c '…'; }`.
+	"{": true, "}": true, "(": true, ")": true,
+};
+/** Wrapper programs that run the command word that follows them. */
+const WRAPPERS: Record<string, true> = {
+	sudo: true,
+	env: true,
+	command: true,
+	exec: true,
+	nohup: true,
+	time: true,
+	nice: true,
+	setsid: true,
+	stdbuf: true,
+	xargs: true,
+	"!": true,
+};
+/** Wrapper flags that consume the next word as their value. */
+const WRAPPER_VALUE_FLAGS: Record<string, Record<string, true>> = {
+	sudo: {
+		"-u": true, "--user": true, "-g": true, "--group": true, "-p": true, "--prompt": true, "-C": true,
+		"--chdir": true, "-h": true, "--host": true, "-r": true, "--role": true, "-t": true, "--type": true,
+		"-U": true, "--other-user": true, "-R": true, "--chroot": true,
+	},
+	env: { "-u": true, "--unset": true, "-C": true, "--chdir": true, "-S": true, "--split-string": true },
+	xargs: {
+		"-I": true, "-n": true, "-L": true, "-s": true, "-d": true, "-a": true, "-E": true, "-e": true, "-P": true,
+		"--replace": true, "--max-args": true, "--max-lines": true, "--max-chars": true, "--delimiter": true,
+		"--arg-file": true, "--eof": true, "--max-procs": true,
+	},
+	nice: { "-n": true, "--adjustment": true },
+	stdbuf: { "-i": true, "-o": true, "-e": true, "--input": true, "--output": true, "--error": true },
+};
+/** `uv run <cmd>`: the command follows uv's own flags. */
+const UV_RUN_VALUE_FLAGS: Record<string, true> = {
+	"-w": true, "--with": true, "-p": true, "--python": true, "--extra": true, "--index": true, "--index-url": true,
+	"--default-index": true, "--directory": true, "--project": true, "--env-file": true, "--constraint": true,
+	"-c": true, "--config-file": true, "--cache-dir": true, "--python-platform": true, "--resolution": true,
+	"--group": true, "--no-group": true, "--from": true,
+};
+const NO_FLAGS: Record<string, true> = {};
+
+/** The program name of a word, without its directory and without a `.exe` suffix. */
+function baseName(word: string): string {
+	const cut = Math.max(word.lastIndexOf("/"), word.lastIndexOf("\\"));
+	const last = cut >= 0 ? word.slice(cut + 1) : word;
+	return last.toLowerCase().endsWith(".exe") ? last.slice(0, -4) : last;
+}
+
+/** Skip flags (and the values of the named ones) from index `i`; returns the next word index. */
+function skipFlags(words: Segment, i: number, valueFlags: Record<string, true>): number {
+	while (i < words.length) {
+		const t = words[i].text;
+		if (!words[i].quoted && /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) { i++; continue; }
+		if (!t.startsWith("-") || t === "-") break;
+		if (t === "--") { i++; break; }
+		i += !t.includes("=") && valueFlags[t] === true ? 2 : 1;
+	}
+	return i;
+}
+
+/** The index just past a double-quoted span starting at `i`, honouring escapes. */
+function skipDoubleQuoted(s: string, i: number): number {
+	i++;
+	while (i < s.length) {
+		if (s[i] === "\\") { i += 2; continue; }
+		if (s[i] === '"') return i + 1;
+		i++;
+	}
+	return s.length;
+}
+
+/** A double-quoted span's text, with escapes resolved and its substitutions collected. */
+function readDoubleQuoted(s: string, i: number): [string, number, string[]] {
+	const subs: string[] = [];
+	let out = "";
+	i++;
+	while (i < s.length) {
+		const ch = s[i];
+		if (ch === "\\") {
+			const n = s[i + 1];
+			if (n === '"' || n === "\\" || n === "$" || n === "`") { out += n; i += 2; } else { out += ch; i++; }
+			continue;
+		}
+		if (ch === '"') return [out, i + 1, subs];
+		if (ch === "`") { const [inner, next] = readBacktick(s, i); subs.push(inner); i = next; continue; }
+		if (ch === "$" && s[i + 1] === "(") { const [inner, next] = balanced(s, i + 2, "(", ")"); subs.push(inner); i = next; continue; }
+		out += ch;
+		i++;
+	}
+	return [out, s.length, subs];
+}
+
+/** A backtick substitution's inner text and the index just past its closing backtick. */
+function readBacktick(s: string, i: number): [string, number] {
+	const end = s.indexOf("`", i + 1);
+	return end === -1 ? [s.slice(i + 1), s.length] : [s.slice(i + 1, end), end + 1];
+}
+
+/** A balanced `open…close` span starting just after the opener, honouring nested quotes. */
+function balanced(s: string, start: number, open: string, close: string): [string, number] {
+	let depth = 0;
+	let i = start;
+	while (i < s.length) {
+		const ch = s[i];
+		if (ch === "\\") { i += 2; continue; }
+		if (ch === "'") { const end = s.indexOf("'", i + 1); i = end === -1 ? s.length : end + 1; continue; }
+		if (ch === '"') { i = skipDoubleQuoted(s, i); continue; }
+		if (ch === open) depth++;
+		else if (ch === close) {
+			if (depth === 0) return [s.slice(start, i), i + 1];
+			depth--;
+		}
+		i++;
+	}
+	return [s.slice(start), s.length];
+}
+
+/**
+ * Simple commands whose STDIN is not the terminal: fed by a pipe, or by a stdin
+ * redirect (`< file`, `<<<word`). A shell or interpreter reached this way runs
+ * text that was never typed into the command line, so `stdinPayload` resolves it
+ * from the producer when the producer is statically readable, and the segment is
+ * otherwise reported opaque so the text verdict stands (PR #106 round 4, F1).
+ */
+const PIPE_FED = new WeakSet<Segment>();
+const STDIN_FED = new WeakSet<Segment>();
+
+/** Code consumers whose stdin text the guard could not read at all. */
+const OPAQUE_STDIN = new WeakSet<Segment>();
+
+/**
+ * The literal text a producer writes to stdout, when the guard can read it.
+ *
+ * `echo`/`printf` write their arguments. A substitution anywhere in the command,
+ * a variable in the arguments, or any other program (`cat file`, `curl …`) means
+ * the text is NOT statically known, so `null` is returned and the consumer that
+ * would run it is reported opaque instead — the fail-closed answer.
+ */
+function staticText(seg: Segment | undefined, substitutions: string[]): string | null {
+	if (!seg || substitutions.length) return null;
+	const inv = invocation(seg);
+	if (!inv || (inv.program !== "echo" && inv.program !== "printf")) return null;
+	if (inv.args.some((w) => w.text.includes("$"))) return null;
+	return inv.args.map((w) => w.text).join(" ");
+}
+
+/**
+ * Split a command into simple commands, one pass, no shell.
+ *
+ * Heredoc bodies are consumed to their delimiter and dropped (they are stdin,
+ * not command text) — unless the program reading the body is a shell, in which
+ * case the body IS the command that runs and is tokenized as one, or an
+ * interpreter, in which case the body is that interpreter's code and is kept as
+ * a payload. `sh -c`/`bash -c` arguments, `eval` arguments and command
+ * substitutions are tokenized recursively, and a payload handed to another
+ * program (`python -c`, `node -e`, `ssh <host>`, `docker run|exec`, …) is
+ * collected for the executor-payload check, which text-matches what it cannot
+ * parse.
+ */
+function tokenize(command: string, depth = 0, payloads: Payload[] = []): Segment[] {
+	const segments: Segment[] = [];
+	const substitutions: string[] = [];
+	const heredocs: { delim: string; strip: boolean }[] = [];
+	let words: Segment = [];
+	let buf = "";
+	let quoted = false;
+	let started = false;
+	// Which separator fed the simple command being built, and whether a stdin
+	// redirect feeds it: a code consumer reached by `|` or `<` runs text the guard
+	// must read from somewhere else, or not at all (see `stdinPayload`).
+	let pendingPipe = false;
+	let pendingStdin = false;
+
+	const endWord = () => {
+		if (!started) return;
+		// A lone brace is shell grouping, not a word.
+		if (buf !== "{" && buf !== "}") words.push({ text: buf, quoted });
+		buf = "";
+		quoted = false;
+		started = false;
+	};
+	const endSegment = () => {
+		endWord();
+		if (words.length) {
+			if (pendingPipe) PIPE_FED.add(words);
+			if (pendingStdin) STDIN_FED.add(words);
+			segments.push(words);
+		}
+		words = [];
+		pendingStdin = false;
+	};
+
+	let i = 0;
+	const s = command;
+	while (i < s.length) {
+		const ch = s[i];
+
+		if (ch === "\\") {
+			if (s[i + 1] === "\n") { i += 2; continue; } // a line join, not a separator
+			buf += s[i + 1] ?? "";
+			quoted = true;
+			started = true;
+			i += 2;
+			continue;
+		}
+		if (ch === "'") {
+			const end = s.indexOf("'", i + 1);
+			buf += s.slice(i + 1, end === -1 ? s.length : end);
+			quoted = true;
+			started = true;
+			i = end === -1 ? s.length : end + 1;
+			continue;
+		}
+		if (ch === '"') {
+			const [text, next, subs] = readDoubleQuoted(s, i);
+			buf += text;
+			substitutions.push(...subs);
+			quoted = true;
+			started = true;
+			i = next;
+			continue;
+		}
+		if (ch === "$" && (s[i + 1] === "'" || s[i + 1] === '"')) {
+			// $'…' and $"…": the prefix only changes how escapes inside are read.
+			const q = s[i + 1];
+			if (q === "'") {
+				const end = s.indexOf("'", i + 2);
+				buf += s.slice(i + 2, end === -1 ? s.length : end);
+				i = end === -1 ? s.length : end + 1;
+			} else {
+				const [text, next, subs] = readDoubleQuoted(s, i + 1);
+				buf += text;
+				substitutions.push(...subs);
+				i = next;
+			}
+			quoted = true;
+			started = true;
+			continue;
+		}
+		if (ch === "`" || (ch === "$" && s[i + 1] === "(")) {
+			const [inner, next] = ch === "`" ? readBacktick(s, i) : balanced(s, i + 2, "(", ")");
+			substitutions.push(inner);
+			quoted = true;
+			started = true;
+			i = next;
+			continue;
+		}
+		if (ch === "#" && !started) {
+			const nl = s.indexOf("\n", i);
+			i = nl === -1 ? s.length : nl;
+			continue;
+		}
+		if (ch === "\n") {
+			endSegment();
+			pendingPipe = false;
+			i++;
+			// A heredoc body is stdin DATA — unless the program reading it is a
+			// shell, in which case the body IS the command that runs:
+			// `sh <<'EOF'` + `pip install x` + `EOF` was allowed by the
+			// structural matcher and refused by the text one (PR #106 review).
+			// An INTERPRETER reading it is the same shape one step out: the body is
+			// its code (`python3 <<'EOF' … os.system('…') … EOF` runs pip), and it
+			// cannot be parsed as shell, so it is kept as that interpreter's payload
+			// (PR #106 round 4, F1).
+			const owner = segments[segments.length - 1];
+			const reader = invocation(owner ?? [])?.program;
+			const shellReads = isShell(reader);
+			const interpreterReads = reader !== undefined && isInterpreter(reader);
+			for (const h of heredocs) {
+				let body = "";
+				while (i <= s.length) {
+					const nl = s.indexOf("\n", i);
+					const line = nl === -1 ? s.slice(i) : s.slice(i, nl);
+					i = nl === -1 ? s.length : nl + 1;
+					if ((h.strip ? line.replace(/^\t+/, "") : line) === h.delim) break;
+					body += `${line}\n`;
+					if (nl === -1) break;
+				}
+				if (!body.trim()) continue;
+				if (shellReads && depth < MAX_RECURSION) segments.push(...tokenize(body, depth + 1, payloads));
+				else if (interpreterReads) payloads.push({ program: reader as string, text: body, shell: false });
+			}
+			heredocs.length = 0;
+			continue;
+		}
+		if (ch === ";" || ch === "&" || ch === "|") {
+			endSegment();
+			pendingPipe = ch === "|";
+			i += s[i + 1] === ch || (ch === "|" && s[i + 1] === "&") ? 2 : 1;
+			continue;
+		}
+		if (ch === "<" || ch === ">") {
+			endWord();
+			if (ch === "<" && s[i + 1] === "<" && s[i + 2] !== "<") {
+				const strip = s[i + 2] === "-";
+				let j = i + (strip ? 3 : 2);
+				while (s[j] === " " || s[j] === "\t") j++;
+				let delim = "";
+				if (s[j] === "'" || s[j] === '"') {
+					const end = s.indexOf(s[j], j + 1);
+					delim = s.slice(j + 1, end === -1 ? s.length : end);
+					j = end === -1 ? s.length : end + 1;
+				} else {
+					delim = /^[^\s;|&<>]+/.exec(s.slice(j))?.[0] ?? "";
+					j += delim.length;
+				}
+				if (delim) heredocs.push({ delim, strip });
+				i = j;
+				continue;
+			}
+			// `>`, `>>`, `<`, `<>`, `<<<`, `>&`: the operator is not a word, its target is data.
+			// An input redirect hands the program text this guard cannot read
+			// (`sh < script.sh`), so the segment is marked and reported opaque.
+			if (ch === "<") pendingStdin = true;
+			i += s[i + 1] === ch || s[i + 1] === "&" || (ch === "<" && s[i + 1] === ">") ? 2 : 1;
+			continue;
+		}
+		if (ch === "(" || ch === ")") {
+			endSegment();
+			i++;
+			continue;
+		}
+		if (ch === " " || ch === "\t" || ch === "\r") {
+			endWord();
+			i++;
+			continue;
+		}
+		buf += ch;
+		started = true;
+		i++;
+	}
+	endSegment();
+
+	if (depth < MAX_RECURSION) {
+		for (const inner of substitutions) segments.push(...tokenize(inner, depth + 1, payloads));
+		// A command handed to another program is checked by the SAME checks as a
+		// top-level one: a shell payload is tokenized as a command, and an executor
+		// that takes an argument list (`docker run img <cmd>`, `find -exec <cmd>`)
+		// contributes those words as a segment of its own. Only an interpreter
+		// payload (`python -c`, `node -e`, `perl -e`, `ruby -e`) is kept aside,
+		// because the guard cannot parse the language it is written in.
+		const work = [...segments];
+		for (let qi = 0; qi < work.length; qi++) {
+			const seg = work[qi];
+			const reader = invocation(seg)?.program;
+			const codeReader = isShell(reader) || (reader !== undefined && isInterpreter(reader));
+			if (codeReader && (PIPE_FED.has(seg) || STDIN_FED.has(seg))) {
+				// `echo 'pip install x' | sh` runs the PRODUCER's output: the text this
+				// consumer executes is not in its own words. It is read from the
+				// producer when the producer is statically known, and the consumer is
+				// reported OPAQUE when it is not (`curl … | sh`, `cat file | sh`,
+				// `sh < script.sh`) — the fail-closed answer (PR #106 round 4, F1).
+				const text = PIPE_FED.has(seg) ? staticText(work[qi - 1], substitutions) : null;
+				if (text === null) {
+					OPAQUE_STDIN.add(seg);
+					continue;
+				}
+				if (isShell(reader)) {
+					const produced = tokenize(text, depth + 1, payloads);
+					segments.push(...produced);
+					work.push(...produced);
+				} else {
+					payloads.push({ program: reader as string, text, shell: false });
+				}
+				continue;
+			}
+			const inner = shellCArgument(seg);
+			if (inner !== null) {
+				const produced = tokenize(inner, depth + 1, payloads);
+				segments.push(...produced);
+				work.push(...produced);
+				// A substitution inside the argument is code too: `sh -c "$(echo '…')"`
+				// reads as an empty `-c` argument with the substitution stripped out, so
+				// what the shell runs was never judged. `eval` already resolves this
+				// shape; the `-c` paths did not (PR #106 round 4, F3).
+				for (const sub of substitutions) payloads.push({ program: "sh", text: sub, shell: false });
+			}
+			const inv = invocation(seg);
+			if (inv?.program === "eval") {
+				// `eval` runs its ARGUMENTS as a command, and a substitution's
+				// output with them: `eval "$(echo pip install x)"` runs pip.
+				const text = inv.args.map((w) => w.text).join(" ").trim();
+				if (text) {
+					const produced = tokenize(text, depth + 1, payloads);
+					segments.push(...produced);
+					work.push(...produced);
+				}
+				for (const sub of substitutions) payloads.push({ program: "eval", text: sub, shell: false });
+				continue;
+			}
+			const payload = executorPayload(seg);
+			if (!payload) continue;
+			if (payload.words) {
+				segments.push(payload.words);
+				work.push(payload.words);
+				continue;
+			}
+			if (payload.shell) {
+				const produced = tokenize(payload.text, depth + 1, payloads);
+				segments.push(...produced);
+				work.push(...produced);
+				continue;
+			}
+			payloads.push(payload);
+			// The same shape as the `-c` case above, one language out: the code
+			// argument of an interpreter can carry a substitution, and the text that
+			// substitution produces is code in that language (F3).
+			for (const sub of substitutions) payloads.push({ program: payload.program, text: sub, shell: false });
+		}
+	}
+	return segments;
+}
+
+/** The argument of a shell's `-c` flag, when this simple command is one. */
+function shellCArgument(words: Segment): string | null {
+	const inv = invocation(words);
+	if (!inv || SHELLS[inv.program] !== true) return null;
+	for (let i = 0; i < inv.args.length; i++) {
+		const t = inv.args[i].text;
+		if (t === "--") break;
+		if (t === "-c" || /^-[A-Za-z]*c[A-Za-z]*$/.test(t)) return inv.args[i + 1]?.text ?? null;
+	}
+	return null;
+}
+
+/** `find` flags whose argument is a command. */
+const FIND_EXEC_FLAGS: Record<string, true> = { "-exec": true, "-execdir": true, "-ok": true, "-okdir": true };
+
+/** `docker`/`podman` flags that consume the next word, so the image or service can be found. */
+const DOCKER_VALUE_FLAGS: Record<string, true> = {
+	"-e": true, "--env": true, "-v": true, "--volume": true, "-p": true, "--publish": true, "-w": true,
+	"--workdir": true, "-u": true, "--user": true, "--name": true, "--network": true, "--net": true,
+	"--entrypoint": true, "-m": true, "--memory": true, "--env-file": true, "-l": true, "--label": true,
+	"--mount": true, "--add-host": true, "--platform": true, "--pull": true, "--log-driver": true,
+	"--log-opt": true, "--restart": true, "--cap-add": true, "--cap-drop": true, "--device": true,
+	"--dns": true, "--hostname": true, "-h": true, "--ip": true, "--link": true, "--security-opt": true,
+	"--sysctl": true, "--tmpfs": true, "--ulimit": true, "--userns": true, "--volume-driver": true,
+	"--volumes-from": true, "-c": true, "--cpu-shares": true, "--cpuset-cpus": true, "--memory-swap": true,
+	"-a": true, "--attach": true, "--gpus": true, "--pid": true, "--uts": true, "--ipc": true,
+	"--shm-size": true, "--stop-signal": true, "--health-cmd": true, "--health-interval": true,
+	"--health-retries": true, "--health-timeout": true, "--health-start-period": true, "--profile": true,
+};
+
+/** `ssh` flags that consume the next word. */
+const SSH_VALUE_FLAGS: Record<string, true> = {
+	"-p": true, "-i": true, "-o": true, "-l": true, "-F": true, "-J": true, "-L": true, "-R": true, "-D": true,
+	"-b": true, "-c": true, "-m": true, "-E": true, "-Q": true, "-S": true, "-W": true, "-e": true, "-I": true,
+	"-O": true, "-w": true,
+};
+
+/** Whether a program runs shell code handed to it as a string. */
+const isShell = (program: string | undefined): boolean => program !== undefined && SHELLS[program] === true;
+/** Whether a program evaluates a string in its OWN language, not in a shell. */
+const isInterpreter = (program: string): boolean =>
+	/^python[0-9.]*$/.test(program) || program === "node" || program === "bun" || program === "perl" || program === "ruby";
+
+/** `env -S`/`--split-string`'s value, when this command hands one to env. */
+function envSplitString(words: Segment): string | null {
+	let head = 0;
+	while (head < words.length) {
+		if (!words[head].quoted && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[head].text)) { head++; continue; }
+		const program = words[head].quoted ? "" : baseName(words[head].text);
+		if (program === "env") {
+			for (let i = head + 1; i < words.length; i++) {
+				const t = words[i].text;
+				if (t === "-S" || t === "--split-string") return words[i + 1]?.text ?? null;
+				if (t.startsWith("--split-string=")) return t.slice("--split-string=".length);
+				if (t.startsWith("-S") && t.length > 2) return t.slice(2);
+			}
+			return null;
+		}
+		if (WRAPPERS[program] !== true) return null;
+		head = skipFlags(words, head + 1, WRAPPER_VALUE_FLAGS[program] ?? NO_FLAGS);
+	}
+	return null;
+}
+
+/**
+ * The code a program will RUN, when this simple command hands it one.
+ *
+ * The program a command names is not always the program that runs the banned
+ * command: `python -c "os.system('pip install x')"` runs pip, and so do
+ * `ssh box 'pip install x'`, `docker run img pip install x` and a heredoc a
+ * shell reads as its stdin. Each of these was refused by the text matcher and
+ * allowed by the structural one (review of PR #106, finding 3), so the payload
+ * is resolved here and checked in its own right: shell payloads are tokenized
+ * as commands, and a non-shell payload (`python -c`, `node -e`, `perl -e`,
+ * `docker run`) is matched by text, because the guard cannot parse the
+ * language. `null` when this command hands nothing to another program.
+ */
+function executorPayload(words: Segment): Payload | null {
+	// `env -S '<string>'` / `--split-string <string>`: env splits the string itself
+	// and execs the result, so the string is a command line. Resolved FIRST: the
+	// string is env's whole command, so `invocation` would find no program at all.
+	// (env also appends words that follow the value — `env -S sh -c 'pip install
+	// x'` runs pip — and those are covered by the program-less rule in
+	// `segmentUnderstood`: the line ends on a quoted word, so it is not understood
+	// and the text verdict stands. Verified by mutation: a guard here is
+	// unreachable in effect.)
+	const splitString = envSplitString(words);
+	if (splitString !== null) return { program: "env", text: splitString, shell: true };
+	const inv = invocation(words);
+	if (!inv) return null;
+	const { program, args } = inv;
+	if (program === "ssh") {
+		let i = 0;
+		while (i < args.length && args[i].text.startsWith("-")) i += SSH_VALUE_FLAGS[args[i].text] === true ? 2 : 1;
+		i++; // the host
+		const rest = args.slice(i);
+		// The remote shell joins the remaining words with spaces and runs them, so
+		// the payload is a command LINE, not an argument list.
+		return rest.length ? { program, text: rest.map((w) => w.text).join(" "), shell: true } : null;
+	}
+	if (program === "docker" || program === "podman" || program === "docker-compose") {
+		let i = 0;
+		if (args[i]?.text === "compose") i++;
+		const sub = args[i]?.text;
+		if (sub !== "run" && sub !== "exec" && sub !== "create") return null;
+		i++;
+		i = skipFlags(args, i, DOCKER_VALUE_FLAGS);
+		const image = args[i]; // the image, or the compose service
+		if (!image) return null;
+		const command = args.slice(i + 1);
+		// `docker run` execs the words after the image directly, so the payload is
+		// that argument list — no shell, no re-quoting.
+		return command.length ? { program, text: command.map((w) => w.text).join(" "), shell: false, words: command } : null;
+	}
+	// `find . -exec <cmd> … \;`: find execs the words after the flag, up to `;` or `+`.
+	if (program === "find") {
+		const start = args.findIndex((w) => FIND_EXEC_FLAGS[w.text] === true);
+		if (start === -1) return null;
+		const rest = args.slice(start + 1);
+		const end = rest.findIndex((w) => w.text === ";" || w.text === "+");
+		const command = end === -1 ? rest : rest.slice(0, end);
+		return command.length ? { program, text: command.map((w) => w.text).join(" "), shell: false, words: command } : null;
+	}
+	if (!isInterpreter(program)) return null;
+	const scan = interpreterScan(program, args);
+	return scan.code === null ? null : { program, text: scan.code, shell: false };
+}
+
+/** Single-dash clusters that carry code for perl and ruby (`-pe`, `-ne`, `-E`). */
+const CODE_CLUSTER: Record<string, RegExp> = { perl: /^-[A-Za-z]*[eE][A-Za-z]*$/, ruby: /^-[A-Za-z]*e[A-Za-z]*$/ };
+
+/** Flags an interpreter accepts without changing what it runs. */
+const INTERPRETER_INERT_FLAGS: Record<string, Record<string, true>> = {
+	python: { "-u": true, "-B": true, "-s": true, "-S": true, "-E": true, "-O": true, "-OO": true },
+	perl: { "-w": true, "-W": true },
+	ruby: { "-w": true, "-W": true },
+	node: {},
+	bun: {},
+};
+
+/** The family an interpreter belongs to, for the flag tables above. */
+function interpreterFamily(program: string): string {
+	return /^python[0-9.]*$/.test(program) ? "python" : program;
+}
+
+interface InterpreterScan {
+	/** The code the interpreter will run from a flag, when one is found. */
+	code: string | null;
+	/** True when an argument is a route this guard does not model. */
+	opaque: boolean;
+}
+
+/**
+ * What an interpreter does with its arguments.
+ *
+ * The table used to know only `-c` and `-e`/`--eval`, so `node -p '…'`,
+ * `perl -E '…'` and `ruby -pe '…'` were modelled, read as "understood", and
+ * ALLOWED while the text matcher blocked them (PR #106 round 4, F2). The same
+ * shape as round 3's `timeout` value flags: an incomplete table under a program
+ * the guard DOES model, where the fail-closed gate cannot help.
+ *
+ * Everything that is neither a code flag nor a known-inert flag — `-m`, `-r`,
+ * `-i`, `-x`, a script path, an unknown long flag — is a route this guard does
+ * not model, so `opaque` is set and the fail-closed combiner keeps the text
+ * verdict. That is the safe direction: it can only ADD blocks, never remove one.
+ */
+function interpreterScan(program: string, args: Segment): InterpreterScan {
+	const family = interpreterFamily(program);
+	const inert = INTERPRETER_INERT_FLAGS[family] ?? {};
+	const cluster = CODE_CLUSTER[family];
+	const nodeish = family === "node" || family === "bun";
+	for (let i = 0; i < args.length; i++) {
+		const t = args[i].text;
+		if (t === "--") return { code: null, opaque: true };
+		if (inert[t] === true) continue;
+		if (family === "python") {
+			if (t === "-c") return { code: args[i + 1]?.text ?? "", opaque: false };
+			if (t.startsWith("-c") && t.length > 2) return { code: t.slice(2), opaque: false };
+			return { code: null, opaque: true };
+		}
+		// `-p` is code for node (`--print`) and a loop flag for perl and ruby; `-E`
+		// is code for perl and an ENCODING for ruby. A family-blind table would read
+		// `perl -p -e '…'` as code `-e` and `ruby -E utf-8 -e '…'` as code `utf-8`,
+		// understand the segment, and drop the text hit.
+		if (t === "-e" || t === "--eval" || (nodeish && (t === "-p" || t === "--print")) || (family === "perl" && t === "-E")) {
+			return { code: args[i + 1]?.text ?? "", opaque: false };
+		}
+		if (t.startsWith("--eval=")) return { code: t.slice("--eval=".length), opaque: false };
+		if (nodeish && t.startsWith("--print=")) return { code: t.slice("--print=".length), opaque: false };
+		if (cluster?.test(t)) {
+			// `perl -pe '…'`, `ruby -ne '…'`: the code follows the cluster, or trails
+			// inside it.
+			const at = t.search(/[eE]/);
+			return { code: at >= 0 && at + 1 < t.length ? t.slice(at + 1) : (args[i + 1]?.text ?? ""), opaque: false };
+		}
+		// A perl or ruby loop flag carries no code: `perl -p -e '…'` is ordinary.
+		if (!nodeish && /^-[A-Za-z]+$/.test(t) && !/[eE]/.test(t)) continue;
+		return { code: null, opaque: true };
+	}
+	return { code: null, opaque: false };
+}
+
+/** Whether an interpreter's arguments are a route this guard does not model. */
+function interpreterOpaque(program: string, args: Segment): boolean {
+	return interpreterScan(program, args).opaque;
+}
+
+interface Invocation {
+	program: string;
+	args: Segment;
+}
+
+/**
+ * The program a simple command runs, with wrappers resolved.
+ *
+ * Returns null when there is no program: a quoted word is data (it never names
+ * a program), and a command made only of assignments or flags runs nothing.
+ */
+function invocation(words: Segment): Invocation | null {
+	let i = 0;
+	for (let hop = 0; hop <= 5; hop++) {
+		while (i < words.length && !words[i].quoted && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i].text)) i++;
+		// A shell keyword introduces a command list: the program follows it.
+		while (i < words.length && !words[i].quoted && SHELL_KEYWORDS[words[i].text] === true) i++;
+		if (i >= words.length) return null;
+		if (words[i].quoted) return null;
+		const program = baseName(words[i].text);
+		const args = words.slice(i + 1);
+		if (program === "uv" && args[0]?.text === "run") {
+			i = skipFlags(words, i + 2, UV_RUN_VALUE_FLAGS);
+			continue;
+		}
+		if (program === "uv" && args[0]?.text === "tool" && args[1]?.text === "run") {
+			// `uv tool run <cmd>` is `uvx <cmd>`: it runs the command from an
+			// ephemeral environment, so `uv tool run pip install x` runs pip while
+			// the segment read as uv's own and the text hit was dropped (PR #106
+			// round 4, F4).
+			i = skipFlags(words, i + 3, UV_RUN_VALUE_FLAGS);
+			continue;
+		}
+		if (program === "uvx") {
+			i = skipFlags(words, i + 1, UV_RUN_VALUE_FLAGS);
+			continue;
+		}
+		if (program === "timeout") {
+			// `timeout 5 cmd`: the duration is a positional argument, not a flag.
+			i = skipFlags(words, i + 1, WRAPPER_VALUE_FLAGS.timeout ?? NO_FLAGS) + 1;
+			continue;
+		}
+		if (WRAPPERS[program] === true) {
+			i = skipFlags(words, i + 1, WRAPPER_VALUE_FLAGS[program] ?? NO_FLAGS);
+			continue;
+		}
+		return { program, args };
+	}
+	return null;
+}
+
+const GIT_GLOBAL_VALUE_FLAGS: Record<string, true> = {
+	"-C": true, "-c": true, "--git-dir": true, "--work-tree": true, "--namespace": true, "--exec-path": true,
+	"--config-env": true, "--super-prefix": true, "--shallow-file": true, "--attr-source": true,
+};
+
+interface GitCommand {
+	/** The subcommand, after any global options. */
+	sub: string;
+	/** The words after the subcommand. */
+	args: Segment;
+	/** True when a global `-C <path>` precedes the subcommand: another repo. */
+	dashC: boolean;
+}
+
+/**
+ * A git invocation, with its global options resolved.
+ *
+ * The global options are why this exists: `git -C <repo> checkout -b release/x`
+ * and `git --work-tree /x checkout -b release/z` are ordinary creations, and the
+ * text matchers that required `checkout` right after `git` reported a pass for
+ * every variant they could not see (measured 2026-09-17 and 2026-10-11).
+ * `--opt value` and `--opt=value` are both read, so a space-separated value no
+ * longer hides the subcommand.
+ */
+function gitCommand(words: Segment): GitCommand | null {
+	const inv = invocation(words);
+	if (!inv || inv.program !== "git") return null;
+	let dashC = false;
+	let i = 0;
+	while (i < inv.args.length) {
+		const t = inv.args[i].text;
+		if (t.startsWith("-") && t !== "-") {
+			if (t === "-C") dashC = true;
+			i += !t.includes("=") && GIT_GLOBAL_VALUE_FLAGS[t] === true ? 2 : 1;
+			continue;
+		}
+		return { sub: t, args: inv.args.slice(i + 1), dashC };
+	}
+	return null;
+}
+
+const GH_GLOBAL_VALUE_FLAGS: Record<string, true> = { "-R": true, "--repo": true, "--hostname": true };
+
+interface GhCommand {
+	sub: string;
+	verb: string;
+	/** The words after the subcommand, verb included. */
+	tail: Segment;
+	/** The words after the verb. */
+	args: Segment;
+	/** The global flags that sat before the subcommand. */
+	globals: Segment;
+}
+
+/** A gh invocation: subcommand, verb and the words after them. */
+function ghCommand(words: Segment): GhCommand | null {
+	const inv = invocation(words);
+	if (!inv || inv.program !== "gh") return null;
+	const i = skipFlags(inv.args, 0, GH_GLOBAL_VALUE_FLAGS);
+	const tail = inv.args.slice(i + 1);
+	return { sub: inv.args[i]?.text ?? "", verb: tail[0]?.text ?? "", tail, args: tail.slice(1), globals: inv.args.slice(0, i) };
+}
+
+/**
+ * The repository a gh invocation explicitly names, as `owner/name`, or null.
+ *
+ * `gh pr merge` takes `-R, --repo [HOST/]OWNER/REPO` and a PR URL names its own
+ * repository. Both matter to the merge gate: it reads the checks of the repo the
+ * command actually targets, and a same-numbered PR in the session's repo is a
+ * different PR. A value gh itself would reject (no `/`) is not resolved here.
+ */
+function namedRepo(words: Segment): string | null {
+	for (let i = 0; i < words.length; i++) {
+		const t = words[i].text;
+		const value = t === "-R" || t === "--repo" ? words[i + 1]?.text : t.startsWith("--repo=") ? t.slice("--repo=".length) : undefined;
+		if (!value) continue;
+		const parts = value.split("/").filter(Boolean);
+		if (parts.length >= 2) return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+	}
+	return null;
+}
+
+/** The first positional word of an argument list, skipping flags and their values. */
+function firstPositional(args: Segment, valueFlags: Record<string, true>): Word | null {
+	const i = skipFlags(args, 0, valueFlags);
+	return i < args.length ? args[i] : null;
+}
+
+/** Whether a merge invocation names a method that is not a merge commit. */
+function squashLike(words: Segment): boolean {
+	for (let i = 0; i < words.length; i++) {
+		const t = words[i].text;
+		if (t === "--squash" || t === "--rebase") return true;
+		if (t === "--merge-method") {
+			const v = words[i + 1]?.text;
+			if (v === "squash" || v === "rebase") return true;
+		}
+		if (t.startsWith("--merge-method=")) {
+			const v = t.slice("--merge-method=".length);
+			if (v === "squash" || v === "rebase") return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * The branch names a git invocation creates.
+ *
+ * Every creating form the guard knows: `checkout -b|-B|--orphan` and `switch
+ * -c|-C|--create|--force-create` (the HEAD-moving ones, shared with the chain
+ * allowance), `worktree add -b|-B`, and a bare `git branch <name>` (creation),
+ * which is told apart from the querying, deleting and renaming forms by the
+ * flags they carry. `git branch -c|-C|--copy` names its new branch last.
+ */
+function createdBranchNames(g: GitCommand): string[] {
+	if (g.sub === "checkout" || g.sub === "switch") return headMovingNames(g).filter(Boolean);
+	const args = g.args;
+	if (g.sub === "worktree") {
+		if (args[0]?.text !== "add") return [];
+		const names: string[] = [];
+		for (let i = 0; i < args.length; i++) {
+			if (args[i].text === "-b" || args[i].text === "-B") {
+				const name = args[i + 1]?.text;
+				if (name) names.push(name);
+			}
+		}
+		return names;
+	}
+	if (g.sub !== "branch") return [];
+	if (args.some((w) => BRANCH_QUERY_FLAGS[w.text] === true)) return [];
+	const positional: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		const t = args[i].text;
+		if (t.startsWith("-") && t !== "-") {
+			if (!t.includes("=") && BRANCH_OTHER_VALUE_FLAGS[t] === true) i++;
+			continue;
+		}
+		positional.push(t);
+	}
+	const copying = args.some((w) => w.text === "-c" || w.text === "-C" || w.text === "--copy");
+	if (!positional.length) return [];
+	return [copying ? positional[positional.length - 1] : positional[0]];
+}
+
+/** `git branch` flags that only query, delete, move or configure: no creation. */
+const BRANCH_QUERY_FLAGS: Record<string, true> = {
+	"-d": true, "-D": true, "--delete": true, "-m": true, "-M": true, "--move": true, "-l": true, "--list": true,
+	"--show-current": true, "--contains": true, "--no-contains": true, "--merged": true, "--no-merged": true,
+	"--points-at": true, "--format": true, "--sort": true, "--column": true, "-v": true, "-vv": true,
+	"--verbose": true, "-a": true, "--all": true, "-r": true, "--remotes": true, "--edit-description": true,
+	"--set-upstream-to": true, "-u": true, "--unset-upstream": true, "--track": true, "--no-track": true,
+	"--color": true, "--no-color": true, "-i": true, "--ignore-case": true, "--no-abbrev": true, "--abbrev": true,
+};
+/** `git branch` flags that consume the next word as a value. */
+const BRANCH_OTHER_VALUE_FLAGS: Record<string, true> = {
+	"--points-at": true, "--contains": true, "--no-contains": true, "--merged": true, "--no-merged": true,
+	"--set-upstream-to": true,
+};
+
+/**
+ * The names of a HEAD-moving creation, or an empty list.
+ *
+ * Only these move HEAD to the new branch, which is what the chain allowance
+ * below must prove: `git branch x` creates `x` without checking it out, so a
+ * commit after it still lands on the old branch.
+ */
+function headMovingNames(g: GitCommand): string[] {
+	if (g.sub !== "checkout" && g.sub !== "switch") return [];
+	const flags = g.sub === "checkout" ? ["-b", "-B", "--orphan"] : ["-c", "-C", "--create", "--force-create"];
+	const names: string[] = [];
+	for (let i = 0; i < g.args.length; i++) {
+		if (flags.includes(g.args[i].text)) names.push(g.args[i + 1]?.text ?? "");
+	}
+	return names;
+}
+
+/** `gh stack init|add` flags that consume the next word as their value. */
+const STACK_NAME_VALUE_FLAGS: Record<string, true> = { "-b": true, "--base": true, "-m": true, "--message": true };
+
+/** The branch names a `gh stack init|add` argument list asks for. */
+function stackBranchNames(args: Segment): string[] {
+	const names: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		const t = args[i].text;
+		if (t.startsWith("-") && t !== "-") {
+			const takesValue = !t.includes("=") && (STACK_NAME_VALUE_FLAGS[t] === true || /^-[A-Za-z]*m$/.test(t));
+			if (takesValue) i++;
+			continue;
+		}
+		names.push(t);
+	}
+	return names;
+}
+
+/**
+ * The message of a commit, read from its own words.
+ *
+ * The `-m`/`--message` flag and its value, or a short cluster that ends in `m`
+ * (`-am`, `-nm`, `-Sm`), whose value is the rest of the word or the next one.
+ * This replaced a pattern that searched the whole command for `-m` as a
+ * STANDALONE token; that pattern was itself a fix for two measured failures —
+ * a `-m` inside a hyphenated word (`joint-most-fired`, `plan-msg.txt`) read as
+ * the flag plus a bogus message, and the old bare `-m` finding the `-m` inside
+ * `--message` and capturing "essage". Reading the flag where the shell puts it —
+ * among the commit's own words — makes both impossible, and reads `-am` too,
+ * which the token pattern never saw.
+ *
+ * Returns null when the commit carries no message flag: an editor opens, the
+ * message is unknown, and the check allows it.
+ */
+function commitMessage(args: Segment): string | null {
+	for (let i = 0; i < args.length; i++) {
+		const t = args[i].text;
+		if (t === "-m" || t === "--message") return args[i + 1]?.text ?? "";
+		if (t.startsWith("--message=")) return t.slice("--message=".length);
+		if (t.startsWith("-") && !t.startsWith("--")) {
+			const m = t.indexOf("m", 1);
+			if (m >= 0) return t.slice(m + 1) || (args[i + 1]?.text ?? "");
+		}
+	}
+	return null;
+}
+
+/** Whether a `gh api` argument list sends a body: the POST routes, per gh's own defaults. */
+function apiWrites(args: Segment): boolean {
+	for (let i = 0; i < args.length; i++) {
+		const t = args[i].text;
+		const method = /^(?:-X|--method)(?:=(.*))?$/.exec(t);
+		if (method) {
+			if ((method[1] ?? args[i + 1]?.text ?? "").toUpperCase() === "POST") return true;
+			continue;
+		}
+		if (/^-X./.test(t) && t.slice(2).toUpperCase() === "POST") return true;
+		if (t === "-f" || t === "-F" || t === "--field" || t === "--raw-field" || t === "--input") return true;
+		if (/^-(?:f|F)./.test(t) || /^--(?:field|raw-field|input)=/.test(t)) return true;
+	}
+	return false;
+}
+
+/**
+ * Text rules for a payload the guard cannot parse: code handed to a non-shell
+ * interpreter.
+ *
+ * Conservative by decision (review of PR #106, finding 3): the guard cannot read
+ * Python or JavaScript, so a payload of that kind is matched by TEXT with the
+ * same intent the pre-structural matcher had, and a hit refuses the command. The
+ * branch-name rule is the one exception to "text is enough": a name that already
+ * carries a kind prefix is not a hit, so a legitimate
+ * `python -c "…git checkout -b feature/x…"` is not refused.
+ */
+const PAYLOAD_RULES: { why: string; pattern: RegExp }[] = [
+	{ why: "pip install", pattern: /(?:^|[^A-Za-z0-9_-])(?:pip|pip3)(?:\.[A-Za-z]+)?\s+install\b/ },
+	{ why: "python -m pip install", pattern: /(?:^|[^A-Za-z0-9_-])python[0-9.]*\s+-m\s+pip\s+install\b/ },
+	{ why: "powershell", pattern: /(?:^|[^A-Za-z0-9_-])(?:powershell|pwsh)(?:\.exe)?(?![A-Za-z0-9_-])/i },
+	{
+		why: "push to main",
+		pattern: /(?:^|[^A-Za-z0-9_-])git\s+(?:-[cC]\s+\S+\s+|--[A-Za-z-]+(?:=\S+)?\s+)*push\b[^\n;|&]*\b(?:main|master)\b/,
+	},
+	{
+		why: "branch creation",
+		pattern:
+			/(?:^|[^A-Za-z0-9_-])git\s+(?:-[cC]\s+\S+\s+|--[A-Za-z-]+(?:=\S+)?\s+)*(?:checkout\s+-[bB]|switch\s+(?:-c|-C|--create|--force-create)|branch\s+(?!-)|worktree\s+add\s+-[bB])\s*['"]?([^\s'";|&]+)/,
+	},
+	{ why: "bare merge", pattern: /(?:^|[^A-Za-z0-9_-])(?:git|gh\s+(?:pr|stack))\s+merge(?![\w-])(?![^\n]*(?:--squash|--rebase|--merge-method))/ },
+	{ why: "issue creation", pattern: /(?:^|[^A-Za-z0-9_-])gh\s+issue\s+create(?![\w-])/ },
+	{
+		why: "issue creation",
+		pattern: /(?:^|[^A-Za-z0-9_-])gh\s+api\b(?=[^\n]*\/issues\b)(?=[^\n]*(?:--field|--raw-field|--input|--method|-f|-F|-X)\b)/,
+	},
+];
+
+/** The first payload rule this text trips, as a phrase for the reason, or null. */
+function payloadHit(text: string): string | null {
+	for (const rule of PAYLOAD_RULES) {
+		const hit = rule.pattern.exec(text);
+		if (!hit) continue;
+		if (rule.why === "branch creation" && hit[1] && BRANCH_OK.test(hit[1])) continue;
+		return rule.why;
+	}
+	return null;
+}
+
+
+/**
+ * ── THE FAIL-CLOSED VERDICT (OMP-13, PR #106 round 4) ──────────────────────
+ *
+ * THIS GUARD IS A MISTAKE-PROOFING FLOOR FOR COOPERATIVE AGENTS, NOT A SECURITY
+ * BOUNDARY. It exists so the ordinary wrong command is refused at the point of
+ * failure, with the positive instruction attached. It does not, and cannot,
+ * contain an agent that sets out to route around it: aliases, functions, a
+ * variable in command position, `base64 | sh`, a committed script — none of
+ * those are read here, and chasing them is an arms race with no end. Measured:
+ * Claude Code gates bash with tree-sitter-bash and FAILS CLOSED, treating any
+ * node type outside its allowlist as `too-complex` (anthropics/claude-code
+ * #20254); a denylist-plus-allowlist design elsewhere took twelve review rounds
+ * and each round found a new way out (yohan-work/poko#22); and the dcg
+ * evaluation in `agent/docs/research/dcg-command-guard-eval.md` measured the same
+ * thing for a rule pack (33/33 on the forms its scope list was derived from,
+ * 6-7/10 on fresh ones). Read the block messages as corrections, not as a
+ * boundary that holds under pressure.
+ *
+ * THE RULE. Every check has two views of the same rule:
+ *   - `check.match` — the TEXT matcher. It is what `origin/main` blocks, unchanged,
+ *     and it is the FLOOR: nothing it blocks is allowed here.
+ *   - `STRUCTURAL[id]` — the same rule read from shell structure: the program that
+ *     will actually run, with quotes, heredoc bodies and flag values as DATA.
+ * The structural view may ALLOW what the text view blocks in exactly one case:
+ * when the whole command is UNDERSTOOD — every segment's program is one this
+ * guard models (or a program whose arguments are inert data), every payload form
+ * is one it resolves, and nothing is left unclassified. Then a text hit with no
+ * structural counterpart is a false positive by construction (the phrase lived in
+ * data), and the command is allowed.
+ *
+ * Anything NOT understood keeps the text verdict, block or allow. That is what
+ * makes an under-block impossible by construction: `ssh box -- pip install x`,
+ * `docker compose -f x.yml run svc pip install x`, `doas pip install x` and
+ * `timeout -s KILL 5 pip install x` are all unmodelled, so main's block stands.
+ * The wrapper table is deliberately NOT grown to catch them — the property test
+ * (`command-guard-property.test.ts`) is the acceptance instead: over the whole
+ * differential corpus and a generated cartesian of wrappers × payload forms ×
+ * banned commands, this guard must block whenever the frozen reference blocks,
+ * except for the audited false-positive families listed in
+ * `fixtures/false-positive-families.md`.
+ */
+
+/** What a check sees: the raw text, its shell structure, and any interpreter payloads. */
+interface Ctx {
+	raw: string;
+	segments: Segment[];
+	payloads: Payload[];
+	/** True when EVERY segment is classified by a known grammar (see the block above). */
+	understood: boolean;
+}
+
+/**
+ * Programs whose ARGUMENTS are inert data: nothing in them is a command. A
+ * phrase inside their words is text, so a text hit with no structural
+ * counterpart is a false positive.
+ *
+ * The list is short on purpose. `awk`, `sed`, `watch`, `parallel` and every
+ * wrapper are NOT here: their arguments can run a command (`awk 'BEGIN{system(…)}'`,
+ * `sed -e 'e cmd'`, `watch cmd`), so an unmodelled program keeps the text
+ * verdict. Growing this list is not how a false positive gets fixed — the
+ * property test is.
+ */
+const DATA_PROGRAMS: Record<string, true> = {
+	echo: true, printf: true, cat: true, grep: true, rg: true, ls: true, wc: true, head: true, tail: true,
+	sort: true, uniq: true, cut: true, tr: true, pwd: true, basename: true, dirname: true, test: true,
+	true: true, false: true, make: true,
+};
+
+/** Programs the guard models: its own subjects, the shells, the interpreters, the packagers. */
+const MODELLED_PROGRAMS: Record<string, true> = {
+	git: true, gh: true, backlog: true, uv: true, pip: true, pip3: true, pipx: true, poetry: true,
+	python: true, python3: true, py: true, node: true, bun: true, deno: true, perl: true, ruby: true,
+	powershell: true, pwsh: true, npm: true, npx: true, yarn: true, pnpm: true,
+	// A shell's own argument (`-c '…'`, a heredoc it reads) is tokenized as a
+	// command by `tokenize`, so the shell itself is understood. `eval` is the same
+	// idea: its arguments ARE the command. (SHELLS is declared further down and is
+	// the same set; spreading it here would read it before initialization.)
+	sh: true, bash: true, dash: true, zsh: true, ksh: true, ash: true,
+	eval: true,
+};
+
+/** Programs that hand their payload to another program; resolved by `executorPayload`. */
+const EXECUTORS: Record<string, true> = {
+	ssh: true, docker: true, podman: true, "docker-compose": true, find: true, env: true, xargs: true,
+};
+
+/** Whether one segment is classified by a known grammar. */
+function segmentUnderstood(seg: Segment): boolean {
+	// A code consumer whose stdin text the guard could not read runs something it
+	// never saw (`curl … | sh`, `sh < script.sh`): the text verdict stands.
+	if (OPAQUE_STDIN.has(seg)) return false;
+	const inv = invocation(seg);
+	if (!inv) {
+		// No program found. Either the segment is pure assignments and shell
+		// keywords — it runs nothing — or the program position holds a quoted word
+		// the shell would RUN (`'pip' install x`), which is not understood. The
+		// first-word heuristic that used to sit here was wrong for a WRAPPER that
+		// consumes the line and leaves the quoted word further in: `env -S sh -c
+		// 'pip install x'` has `env` in front, so it read as understood and the
+		// command was allowed while the text guard blocked it (found by the
+		// generated property test). Any quoted word in a program-less segment means
+		// the line was not fully resolved, so the text verdict stands.
+		return !seg.some((w) => w.quoted);
+	}
+	if (EXECUTORS[inv.program] === true) return executorPayload(seg) !== null;
+	if (isInterpreter(inv.program)) {
+		// A modelled interpreter is understood only while its arguments are a route
+		// this guard models. An unknown flag (`-m`, `-r`, `-i`), a script path or a
+		// bare word is code the guard cannot read, so the text verdict stands — the
+		// safe direction, which can only add blocks (PR #106 round 4, F2).
+		return !interpreterOpaque(inv.program, inv.args);
+	}
+	return DATA_PROGRAMS[inv.program] === true || MODELLED_PROGRAMS[inv.program] === true;
+}
+
+/** Tokenize once, and decide whether every segment is understood. */
+function analyse(command: string): Ctx {
+	const payloads: Payload[] = [];
+	const segments = tokenize(command, 0, payloads);
+	return { raw: command, segments, payloads, understood: segments.every(segmentUnderstood) };
+}
+
+/**
+ * The same rules, read from structure. Each returns the offending fragment or
+ * null, exactly like `Check.match`; the pair is combined by the handler.
+ */
+const STRUCTURAL: Record<string, (c: Ctx) => string | null> = {
+	// Only an INTERPRETER payload reaches this: `python -c`, `node -e`, `perl -e`,
+	// `ruby -e`, an `eval` substitution. A shell payload (`ssh`, `sh -c`, `env -S`,
+	// `docker run`, `find -exec`) is tokenized and judged by the checks above.
+	"executor-payload": (c) => {
+		for (const p of c.payloads) {
+			const hit = payloadHit(p.text);
+			if (hit) return `${hit} in the ${p.program} payload: ${p.text.slice(0, 80)}`;
+		}
+		return null;
+	},
+	// The command that RUNS pip, not the word: `echo "pip install x"` is data, and
+	// `uv pip install` is a different program (uv), sanctioned as it always was.
+	// `uv run <cmd>` is a wrapper, so `uv run pip install x` still blocks.
+	"uv-not-pip": (c) => {
+		for (const seg of c.segments) {
+			const inv = invocation(seg);
+			if (!inv) continue;
+			if (/^pip[0-9]*$/.test(inv.program) && inv.args[0]?.text === "install") return `${inv.program} install`;
+			if (/^(?:python[0-9.]*|py)$/.test(inv.program)) {
+				const at = inv.args.findIndex((w) => w.text === "-m");
+				const mod = at >= 0 ? (inv.args[at + 1]?.text ?? "") : "";
+				if (/^pip[0-9]*$/.test(mod) && inv.args[at + 2]?.text === "install") {
+					return `${inv.program} -m ${mod} install`;
+				}
+			}
+		}
+		return null;
+	},
+	// The program being run, not the word: a string literal, a heredoc or a search
+	// pattern that names PowerShell is data. `bash -c "powershell -c x"` is not,
+	// because the `-c` argument is tokenized as a command.
+	"no-powershell": (c) => {
+		for (const seg of c.segments) {
+			const inv = invocation(seg);
+			if (inv && (inv.program === "powershell" || inv.program === "pwsh")) return inv.program;
+		}
+		return null;
+	},
+	// The explicit-ref form (`git push origin main`), which reaches here from any
+	// branch that is not main — the branch block only covers standing ON main.
+	"no-push-to-main": (c) => {
+		for (const seg of c.segments) {
+			const g = gitCommand(seg);
+			if (!g || g.sub !== "push" || g.args.some((w) => w.text === "--help")) continue;
+			const ref = g.args.find((w) => /(?:^|[:/])(?:main|master)$/.test(w.text));
+			if (ref) return `git push … ${ref.text}`;
+		}
+		return null;
+	},
+	// The message is read from the commit's OWN words (see commitMessage), so a
+	// heredoc body, a file path or another command's text cannot be mistaken for it.
+	"conventional-commits": (c) => {
+		for (const seg of c.segments) {
+			const g = gitCommand(seg);
+			if (!g || g.sub !== "commit") continue;
+			const msg = commitMessage(g.args)?.trim();
+			if (msg && !CONVENTIONAL.test(msg)) return msg;
+		}
+		return null;
+	},
+	// The subcommand is exact, so `git merge-base`/`merge-tree`/`merge-file` are a
+	// different subcommand rather than a near-match, and the squash flag is read
+	// from THIS simple command — `git merge x && echo --squash` no longer passes.
+	"no-bare-merge": (c) => {
+		for (const seg of c.segments) {
+			const g = gitCommand(seg);
+			if (g?.sub === "merge" && !squashLike(seg)) return "git merge";
+			const gh = ghCommand(seg);
+			if (!gh) continue;
+			if ((gh.sub === "pr" || gh.sub === "stack") && gh.verb === "merge" && !squashLike(seg)) {
+				return `gh ${gh.sub} merge`;
+			}
+		}
+		return null;
+	},
+	// Every creating form in the command, not the first one the text showed: `-B`,
+	// `switch --create`, `worktree add -b`, a bare `git branch <name>` and a second
+	// creation in a chain are all read.
+	"branch-naming": (c) => {
+		for (const seg of c.segments) {
+			const g = gitCommand(seg);
+			if (g) {
+				const bad = createdBranchNames(g).find((name) => !BRANCH_OK.test(name));
+				if (bad) return bad;
+			}
+			const gh = ghCommand(seg);
+			if (gh?.sub === "stack" && (gh.verb === "init" || gh.verb === "add")) {
+				const names = stackBranchNames(gh.args);
+				if (!names.length) {
+					return `gh stack ${gh.verb} with no branch name (it would prompt, or generate a date-slug name)`;
+				}
+				const bad = names.find((name) => !BRANCH_OK.test(name));
+				if (bad) return bad;
+			}
+		}
+		return null;
+	},
+	// Two creation routes, both read from the gh command's own words: `gh issue
+	// create`, and `gh api` POSTing to a repo's `/issues` collection. A quoted body
+	// or a grep pattern that merely NAMES the command is data (OMP-11).
+	"issues-in-backlog": (c) => {
+		for (const seg of c.segments) {
+			const gh = ghCommand(seg);
+			if (!gh) continue;
+			if (gh.sub === "issue" && gh.verb === "create") return "gh issue create";
+			if (gh.sub !== "api") continue;
+			const path = gh.tail.find((w) => /(?:^|\/)repos\/[^/\s]+\/[^/\s]+\/issues$/.test(w.text));
+			if (path && apiWrites(gh.tail)) return `gh api … ${path.text}`;
+		}
+		return null;
+	},
+};
+
+/** The one check with no text counterpart: an interpreter payload is always text. */
+const PAYLOAD_CHECK: Check = {
+	id: "executor-payload",
+	match: () => null,
+	reason:
+		"A command handed to another program is still the command. This one is code for an interpreter the guard cannot " +
+		"parse (`python -c`, `node -e`, `perl -e`, `ruby -e`, an `eval` substitution), so its text is matched instead: a " +
+		"banned command named inside it is refused. Run it the sanctioned way, or take it out of the payload.",
+};
+
+const ALL_CHECKS: Check[] = [...CHECKS, PAYLOAD_CHECK];

@@ -205,11 +205,19 @@ file changes in the same PR as the work**, and merging the PR is what lands
   write `--final-summary` (what changed, why, the verification that ran, risks),
   set `For Review`, and commit the task file with the work. "Code presence, grep
   output, and implementation intent are not verification evidence."
-- **Landing sets `Done`.** `pb-land`, once every PR in the run has its verdict and
-  just before it merges, commits `Done` for every task the run closes on the
-  ceiling branch — the top PR it will merge — so `main` only ever receives `Done`.
-  Verdicts are tied to the patch without `backlog/`, so that commit does not void
-  them (`pb-land`).
+- **Landing sets `Done`, stamped with the harness identity.** `pb-land`, once every
+  PR in the run has its verdict and just before it merges, commits `Done` for every
+  task the run closes on the ceiling branch — the top PR it will merge — so `main`
+  only ever receives `Done`. Verdicts are tied to the patch without `backlog/`, so
+  that commit does not void them (`pb-land`). Each card also records which harness
+  did the work: a line in its **final summary** —
+  `Harness-Identity: harness=omp-config-mirror@omp-home-v0.6.0+1 commit=a1b2c3d4e5f6-dirty-9f8e7d6c omp=18.12.2 model=… session=…` —
+  whose value `bun agent/scripts/harness-identity.ts` prints, identical to the
+  `Agent-Identity:` trailer on the commits, so outcomes can be compared across
+  harness changes. Not frontmatter: the serializer drops a key it does not know
+  (`references/backlog-md.md` §3), and the final summary survives later edits.
+  `agent/scripts/done-identity-check.sh` is the gate — a card whose status moves to
+  `Done` without a valid line fails the PR.
 - **Partial work**: a PR that does not finish the task leaves it `In Progress`,
   appends notes (`--append-notes`), and says `Part of <ID>` in the body.
 - **Work resolved without code** (question answered, duplicate, won't do): final
