@@ -31,7 +31,7 @@
     {
       "phase": "release: close",
       "items": [
-        "[main] **Close the milestones this release completed.** For each milestone whose tasks are all `Done` and on trunk at the tag, **except `maintenance`**, which is never closed: `backlog milestone rename \"v0.N <goal>\" \"v0.N <goal> (<tag>)\"` so the shipped version stays on the milestone and its tasks — the `v0.N` prefix was a target and stays as written; the tag is the version that shipped — then `backlog milestone archive \"v0.N <goal> (<tag>)\"`. Commit the backlog change on a `chore/` branch, ask the user to merge it, and land it through `pb-land`'s self-verified exception — it is a backlog record, not an instruction. A milestone still open keeps its title and ships in a later release; when it will miss the release its prefix targets, rename it to the next target (`### Releases and milestones`)"
+        "[main] **Close the milestones this release completed.** For each milestone whose tasks are all `Done` and on trunk at the tag, **except `maintenance`**, which is never closed: `backlog milestone rename \"<goal>\" \"<goal> (<tag>)\"` so the tag that actually shipped stays on the milestone and its tasks — a title states the goal alone, and the tag is the only version a milestone carries, written once it is a fact — then `backlog milestone archive \"<goal> (<tag>)\"`. Commit the backlog change on a `chore/` branch, ask the user to merge it, and land it through `pb-land`'s self-verified exception — it is a backlog record, not an instruction. A milestone still open keeps its title and ships in a later release; a title no longer names a target release, so a goal that slips costs no rename (`### Releases and milestones`)"
       ]
     }
   ]

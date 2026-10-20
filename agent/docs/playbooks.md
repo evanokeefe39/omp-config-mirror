@@ -193,7 +193,7 @@ The task's ID names the branch (`<kind>/<id lowercased>-<slug>`, e.g. `bugfix/om
 
 Why: IMPROVEMENTS 2026-10-11 "Linear `kind` × `domain` label taxonomy". Only `pb-bugfix` created a card, "so most work would never appear in Linear", and the labels described neither the kind of work nor its domain. Linear's single-select label groups reject a second `kind` server-side, so the harness needs no check for it. IMPROVEMENTS 2026-10-11 "`kind` gains `docs` and `continuous-improvement`" added those two kinds after the user corrected the first taxonomy. The tracker is Backlog.md now, and [config.md](config.md) covers the MCP servers and the lazy import of the old Linear tickets.
 
-Open: OMP-10 (was SOLO-86) would stamp each task a playbook run closes with the harness version that did the work. omp-home is versioned by release-please from SOLO-99 on, with `version.txt` plus the commit SHA identifying a harness ([config.md](config.md#release-profile-and-harness-version)). OMP-15 (was SOLO-87, `handoff.sh` makes non-conventional branches) and OMP-13 (was SOLO-88, the branch matcher reads text instead of shell structure) are gaps in the branch conventions the tasks rely on.
+omp-home is versioned by release-please from SOLO-99 on, with `version.txt` plus the commit SHA identifying a harness ([config.md](config.md#release-profile-and-harness-version)) — the commit trailer carries it, and OMP-42 removed the per-card stamp that duplicated it. OMP-15 (was SOLO-87, `handoff.sh` makes non-conventional branches) and OMP-13 (was SOLO-88, the branch matcher reads text instead of shell structure) are gaps in the branch conventions the tasks rely on.
 
 ## Non-standard work
 

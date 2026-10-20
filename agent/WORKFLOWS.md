@@ -27,6 +27,7 @@ held to the same constraints as the operations above.
 |---|---|---|
 | `backlog-conventions` | `skills/backlog-conventions/SKILL.md` | creating or updating tasks, filing a bug, opening a PR, planning a release, or starting work in a repo with no `backlog/` yet — task shape, kind and domain labels, priority, milestones, and the branch / PR-title / PR-body links that carry the task ID |
 | `harness-engineering` | `skills/harness-engineering/SKILL.md` | the harness standard autoloaded by harness-engineer and harness-reviewer — research the native surface first, prove in a fresh process, land recoverable |
+| `eval` | `skills/eval/SKILL.md` | a trial's outcome will be cited, published or compared, or a harness config is to be benchmarked against an agent release — read both mirror pins off a job in `evals/`, approve the size and cost before a billed launch, and record what the result was measured against. Entry point `/eval`; harbor runs the trial and owns every flag (`skill://harbor-cli`). Shortlist: `skills/eval/references/benchmarks.md` |
 | `pb-spec` | `skills/pb-spec/SKILL.md` | behaviour needs agreeing before design — writes a testable behavioural spec |
 | `pb-design` | `skills/pb-design/SKILL.md` | an approved spec needs a design — research, depth, spike decision, 2-3 candidates, review |
 | `data-design-standards` | `skills/data/data-design-standards/SKILL.md` | autoloaded by data-designer — data design checklist |

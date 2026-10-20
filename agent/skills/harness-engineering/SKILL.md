@@ -1,57 +1,58 @@
 ---
 name: harness-engineering
-description: "Extend a coding harness safely: native-first research, fresh-process proof, recoverable land."
+description: "Extend a coding harness — its rules, skills, agents, hooks, commands, extensions and settings — with native-first research, a fresh-process proof and a recoverable landing. Use when a change touches ~/.omp/agent/, a project's .omp/, or a repo a harness ships from."
 ---
 
-# harness-engineering — the cycle that keeps the harness recoverable
+# harness-engineering
 
-Harness work is unlike application work in one decisive way: **the artifact is the
-tool you are using.** A broken web app is a broken page; a broken harness costs the
-ability to fix it, in every session at once. That asymmetry is why recoverability
-and native-first research come before code — and why verification has to be a fresh
-process, not the session that made the change.
+Harness work differs from application work in one way that shapes every step here:
+**the artifact is the tool you are using.** A broken web app is a broken page; a
+broken harness costs the ability to fix it, in every session at once. Recoverability,
+native-first research and fresh-process verification follow from that.
 
 ## Run it when
 
-A change touches a coding agent harness — `~/.omp/agent/`, a project's `.omp/`, or
-a repo a harness ships from. Harness work routes through `pb-spec` /
-`pb-design` / `pb-feature` / `pb-bugfix` — with harness-engineer as the builder
-and this skill as its standard. Run it directly
-for a change too small to need the playbook's todo.
+A change touches a coding agent harness — `~/.omp/agent/`, a project's `.omp/`, or a
+repo a harness ships from. Route through `pb-spec` / `pb-design` / `pb-feature` /
+`pb-bugfix` with `harness-engineer` as the builder and this skill as its standard.
+Run it directly for a change too small to need the playbook's todo.
 
 ## You need first
 
-- The artifact being changed, read in this session — a summary of it is not it
-- The platform's own knowledge, loaded before designing: the version-pinned
-  `omp://` docs for the artifact class, via the `skill://omp-conventions` index —
-  plus a probe of the *running* version for every source-derived fact. omp ships
-  no built-in skills; its docs are embedded at `omp://` for the running version,
-  and facts are version-pinned
-- Prior art, checked before building: `omp skill search` (skills.omp.sh), the
-  plugin marketplace, and a web search for an existing skill, plugin or extension
-  that already does this. Adopt before building — custom machinery owes maintenance
-  and monitoring forever
+- The artifact being changed, read in this session — a summary of it is not it.
+- The platform's own knowledge, loaded before designing: the version-pinned `omp://`
+  docs for the artifact class via the `skill://omp-conventions` index, plus a probe
+  of the *running* version for every source-derived fact. Facts are version-pinned.
+- Prior art, checked before building: `omp skill search` (skills.omp.sh), the plugin
+  marketplace, and a web search. Adopt before building — custom machinery owes
+  maintenance and monitoring an existing tool does not.
 - `skill://omp-conventions` for where the harness keeps each artifact type, and
-  `skill://git-conventions` for how the change lands
-- A recorded before-state: HEAD, `git status --short`, and the exact restore command
+  `skill://git-conventions` for how the change lands.
+- A recorded before-state: HEAD, `git status --short`, and the exact restore command.
 
 ## Steps
 
 Each step produces a named artifact. A step with nothing to show for it did not happen.
 
-1. **Research the native surface first — and the ecosystem around it.** Load the
-   platform's own docs for the artifact class before designing anything, then ask
-   what already exists: every harness ships skills, rules, hooks, commands,
-   settings, events and listing mechanisms, and recreating one shadows it — the
-   most expensive mistake in this domain, because the shadow drifts from the
-   platform forever. Check prior art too — `omp skill search`, the plugin
-   marketplace, GitHub, a web search — and adopt before building: custom machinery
-   owes maintenance and monitoring an existing tool does not, and ask whether a tool
-   or repo already does what the user wants — including very new, unpopular repos —
-   and when one fits, stop for a build-or-adopt decision. Probe the running
-   version, and have a `scout` map the artifacts that already reference what you
-   are about to change, since nothing here compiles and the references are the
-   blast radius.
+1. **Research the native surface, then the ecosystem around it.** Four angles, each
+   answered before designing:
+   - **Blast radius.** Map every artifact of the affected class, the bundled agents
+     (`omp://task-agent-discovery.md`), installed plugins (`omp plugin list`), and
+     every reference to the artifact being changed. Nothing compiles a skill body, so
+     the references *are* the blast radius — have a `scout` map them.
+   - **Vendor conventions.** The version-pinned `omp://` docs for the artifact class
+     via `skill://omp-conventions`, quoting the doc path for each rule. Every harness
+     ships skills, rules, hooks, commands, settings and events; recreating one shadows
+     it, and the shadow drifts from the platform forever. This is the most expensive
+     mistake in the domain.
+   - **Current practice.** How other agent harnesses solve it — web search, last 12
+     months — plus any vendor changelog entry that changes the answer.
+   - **Blindspots.** Does something already do this? GitHub, including repos from the
+     last 30 days, `omp skill search`, and the plugin marketplaces. Return each
+     candidate with URL, fit, maturity and date.
+   - **If a candidate fits, stop and ask the user: adopt, adapt, or build.** Do not
+     design or build past that point until they answer. With no candidate, record
+     "none found" and the searches run.
    → *a facts note: docs read, version probed, native mechanisms and prior art found, what is genuinely new*
 
 2. **Design against those facts, and name the negative space.** The contract holds
@@ -78,8 +79,10 @@ Each step produces a named artifact. A step with nothing to show for it did not 
 5. **Land it recoverable, indexed and sensed.** Fresh-context review of the diff
    against the ask, reading the diff rather than the summary. Confirm a new
    artifact is in the right sync list: data in `ALLOW`, behaviour-defining code in
-   `CODE` — which the sync never stages, so it lands by PR. Index new or changed standard work in
-   `WORKFLOWS.md`. Append the ledger rows — `skill://imp-change` for the change,
+   `CODE` — which the sync never stages, so it lands by PR and is backed up only
+   once that PR lands. A path in neither list stays untracked: the intended signal,
+   and silently unbacked. Index new or changed standard work in `WORKFLOWS.md`.
+   Append the ledger rows — `skill://imp-change` for the change,
    `skill://imp-verify` for a new check with its red case, `skill://imp-defect` for
    what broke on the way. Run the sync; a non-zero exit is the result. Name the
    sensor that would catch a regression, or say plainly that none exists.
@@ -99,38 +102,3 @@ The artifact itself; `WORKFLOWS.md` when a standard was added or changed; the fo
 ledgers at the scope that owns the concern; and the backup/sync channel. Siblings:
 `skill://omp-conventions` for the artifact taxonomy, and `skill://imp-change`,
 `skill://imp-verify` and `skill://imp-defect` for the rows.
-
-## Harness standards
-
-- **Research four angles before designing** (blast radius, vendor conventions,
-  current practice, blindspots), then decide build or adopt:
-  - Blast radius: map every artifact of the affected class, the bundled agents
-    (`omp://task-agent-discovery.md`), installed plugins (`omp plugin list`), and
-    every reference to the artifact being changed — nothing compiles skill bodies.
-  - Vendor conventions: read the version-pinned `omp://` docs for the artifact
-    class via `skill://omp-conventions`, and quote the doc path for each rule.
-  - Current practice: web-search how other agent harnesses solve it (after: the
-    last 12 months), plus any vendor changelog entry that changes the answer.
-  - Blindspot search: does something already do this? GitHub (including repos
-    from the last 30 days), `omp skill search`, plugin marketplaces, and the
-    wider tool ecosystem. Return each candidate with URL, fit, maturity, date.
-  - If a candidate fits the ask, stop and ask the user: adopt, adapt, or build —
-    do not design or build past that point until the user answers; with no
-    candidate, record "none found" and the searches run.
-- **Record the before-state and confirm the backup channel before the first
-  edit**: `git rev-parse HEAD`, `git status --short`, the exact restore command,
-  and `agent/scripts/omp-git-sync.sh status` (name the channel explicitly for
-  any other scope). A backup taken afterwards is not a backup.
-- **One artifact at a time**, re-reading it immediately before the edit.
-- **Prefer the native mechanism over new code**; anything the agent calls must
-  fail open and never block, slow or alter a tool call.
-- **Prove it in a fresh process**: sessions load rules, hooks and extensions at
-  start, so the session that made the change cannot see it — verify from a new
-  process and keep its output. Make every new check go red once, on purpose.
-- **A new artifact belongs in one of the sync's two lists.** Data goes in `ALLOW`,
-  behaviour-defining code in `CODE`. A path in neither stays untracked — the intended
-  signal, and silently unbacked; a path in `CODE` is never staged by the sync, so it
-  is backed up only once its own PR lands.
-- **Index and ledger**: record new or changed standard work in `WORKFLOWS.md`,
-  and append the ledger rows (`skill://imp-change`, `skill://imp-verify`).
-- **For an extension change, `omp plugin doctor` reports 0 errors.**

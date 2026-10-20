@@ -95,20 +95,12 @@ providers:
           openRouterRouting:
             only: [deepinfra, sail-research, inference-net, streamlake]
 
-      # OpenRouter-served GLM 5.3 Flash - the id modelRoles pins for `vision`.
-      # Its own pool: novita and near-ai are members here and NOT in the
-      # deepseek pool, which is why `only` lives per model.
-      #
-      # Rebuilt 2026-10-17: inference-net dropped (its sale ended; it fell from
-      # the cheapest member to L5). No recorded usage of this model in 7 days,
-      # so the pool rests on list price and the uptime history, not a billed
-      # sample: streamlake, deepinfra, near-ai and novita held up1d >= 96% on
-      # every run since 10-12. decart is left out on the deepseek evidence of
-      # poor cache hits; gmicloud on its chronic 10-14/10-15 uptime fall.
-      z-ai/glm-5.3-flash:
-        compat:
-          openRouterRouting:
-            only: [streamlake, deepinfra, near-ai, novita]
+      # z-ai/glm-5.3-flash's override block was removed 2026-10-20 with the
+      # role that used it: `vision` now points at deepseek-v4.1-flash, which is
+      # text+image->text, so the GLM model is no longer routed by modelRoles.
+      # Its pool (streamlake, deepinfra, near-ai, novita) went with it. Re-add
+      # only if a role points at the model again; an override for a model
+      # nothing routes to is a pool nobody reads.
 
   # First-party DeepSeek. No longer used by modelRoles (switched 2026-10-12)
   # but retained: old sessions, stragglers and any explicit `deepseek/...`

@@ -2,8 +2,29 @@ searxng:
   endpoint: http://localhost:8888
 setupVersion: 2
 modelRoles:
-  default: openrouter/deepseek/deepseek-v4.1-flash:off
-  vision: openrouter/z-ai/glm-5.3-flash
+  # `:high` set 2026-10-20 (user decision). It matches what every harbor job
+  # already forced with `--thinking high` on the CLI, so the config now states
+  # the level instead of leaving it to a flag: a run that omits the flag gets
+  # the same behaviour rather than silently dropping to `:off`.
+  default: openrouter/deepseek/deepseek-v4.1-flash:high
+  # vision: deepseek-v4.1-flash, switched 2026-10-20 from z-ai/glm-5.3-flash.
+  # Its architecture is text+image->text (verified against OpenRouter's /models
+  # record the same day), so it reads images; glm additionally accepted video,
+  # which this harness never uses. Keeping vision on the same model as `default`
+  # removes a model from the roster, one `modelOverrides` pool to keep pinned,
+  # and one entry from the OpenRouter surface the ban has to cover.
+  #
+  # This also clears the FIRST of the three conditions that had snapcompact
+  # switched off (agent/AGENTS.md, measured 2026-10-18): the main model could
+  # not read an image frame. Two remain, and neither is about modality:
+  #   - the image-capable route must cost < ~1.07x the text-only route (Sail
+  #     Research serves no image input, so imaging moves traffic to pricier
+  #     members), and
+  #   - the frame-recall probe must pass (deepseek recalled 0/5 and 1/5 facts
+  #     from a frame against 5/5 from the same text, and invented the missing
+  #     values). A model that accepts a frame and then guesses is worse than one
+  #     that refuses it. Do not re-enable snapcompact on modality alone.
+  vision: openrouter/deepseek/deepseek-v4.1-flash:off
   plan: anthropic/claude-opus-5-5:medium
   # Judge: the weighted-loc extension's block tiering, and omp's own typed
   # judgments (auto-thinking, ttsr, find). Set explicitly because the role was
@@ -13,11 +34,22 @@ modelRoles:
   # `openrouter-decisions`), 64k-token window, input-only pricing ($0.042/M,
   # output free). See docs/models.md and omp://environment-variables.md.
   judge: openrouter/~typesafe/jev-latest
-  task: openrouter/deepseek/deepseek-v4.1-flash
+  # `:off` set 2026-10-20 (user decision). This is the role this repo's
+  # subagents actually resolve: the 16 `agent/agents/*.md` definitions declare
+  # `model: "@task"`, and the bundled `task` agent falls back here. Unsuffixed
+  # they inherited the agents' frontmatter `thinkingLevel: low`; the explicit
+  # `:off` outranks that, so they run deliberation-free.
+  task: openrouter/deepseek/deepseek-v4.1-flash:off
   smol: openrouter/deepseek/deepseek-v4.1-flash:off
   commit: openrouter/deepseek/deepseek-v4.1-flash:off
   advisor: openrouter/deepseek/deepseek-v4.1-flash:off
-  worker: openrouter/deepseek/deepseek-v4.1-flash
+  # `:off` set 2026-10-20 (user decision): worker subagents run
+  # deliberation-free. The selector's explicit level outranks the agent
+  # frontmatter `thinkingLevel` (verified against the 18.12.3 binary:
+  # `thinkingLevel: d.explicitThinkingLevel ? d.thinkingLevel : r`), so this
+  # holds for every agent on `@worker`, not only those whose own frontmatter
+  # already says `off`.
+  worker: openrouter/deepseek/deepseek-v4.1-flash:off
   kimi: anthropic/claude-opus-5-5:medium
   web: anthropic/claude-haiku-4-5
 cycleOrder:
@@ -78,7 +110,12 @@ skills:
   enableClaudeUser: false
   enableClaudeProject: false
   enableAgentsUser: true
-defaultThinkingLevel: "off"
+# `defaultThinkingLevel` is deliberately absent (2026-10-20). It held `"off"`,
+# which this key does not accept (enum: minimal|low|medium|high|xhigh|max|auto),
+# and omp silently coerced it to the schema default `high` — the line read as
+# "thinking off" while doing nothing. Measured 2026-10-20 in a clean config root:
+# `low` -> low, `off` -> high, `bogus` -> high, absent -> high. `off` IS valid on
+# a model role's `:suffix`, which is where the intent lives (see `modelRoles`).
 hideThinkingBlock: true
 composer:
   shape: box
@@ -94,9 +131,6 @@ sharpshooter:
   model: ""
 edit:
   mode: hashline
-  modelVariants:
-    deepseek-flash: patch
-    glm-5.3-flash: patch
 astGrep:
   enabled: true
 tools:

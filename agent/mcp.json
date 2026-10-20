@@ -6,6 +6,15 @@
       "command": "backlog",
       "args": ["mcp", "start"],
       "instructions": false
+    },
+    "apify": {
+      "type": "http",
+      "url": "https://mcp.apify.com?tools=actors,docs,apify/rag-web-browser,apify/web-fetch",
+      "headers": {
+        "Authorization": "!printf 'Bearer %s' \"$APIFY_TOKEN\""
+      },
+      "timeout": 180000,
+      "instructions": false
     }
   }
 }

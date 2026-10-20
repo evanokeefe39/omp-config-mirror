@@ -205,19 +205,15 @@ file changes in the same PR as the work**, and merging the PR is what lands
   write `--final-summary` (what changed, why, the verification that ran, risks),
   set `For Review`, and commit the task file with the work. "Code presence, grep
   output, and implementation intent are not verification evidence."
-- **Landing sets `Done`, stamped with the harness identity.** `pb-land`, once every
-  PR in the run has its verdict and just before it merges, commits `Done` for every
-  task the run closes on the ceiling branch — the top PR it will merge — so `main`
-  only ever receives `Done`. Verdicts are tied to the patch without `backlog/`, so
-  that commit does not void them (`pb-land`). Each card also records which harness
-  did the work: a line in its **final summary** —
-  `Harness-Identity: harness=omp-config-mirror@omp-home-v0.6.0+1 commit=a1b2c3d4e5f6-dirty-9f8e7d6c omp=18.12.2 model=… session=…` —
-  whose value `bun agent/scripts/harness-identity.ts` prints, identical to the
-  `Agent-Identity:` trailer on the commits, so outcomes can be compared across
-  harness changes. Not frontmatter: the serializer drops a key it does not know
-  (`references/backlog-md.md` §3), and the final summary survives later edits.
-  `agent/scripts/done-identity-check.sh` is the gate — a card whose status moves to
-  `Done` without a valid line fails the PR.
+- **Landing sets `Done`.** `pb-land`, once every PR in the run has its verdict and
+  just before it merges, commits `Done` for every task the run closes on the
+  ceiling branch — the top PR it will merge — so `main` only ever receives `Done`.
+  Verdicts are tied to the patch without `backlog/`, so that commit does not void
+  them (`pb-land`). A card carries no harness identity: a card is worked across
+  sessions, models and omp versions, so one stamp on it would record a fact that
+  does not exist. Which harness, omp build and model did the work is the commit
+  trailer's job (`Agent-Identity:`, `skill://git-conventions`), where one commit
+  really is one session.
 - **Partial work**: a PR that does not finish the task leaves it `In Progress`,
   appends notes (`--append-notes`), and says `Part of <ID>` in the body.
 - **Work resolved without code** (question answered, duplicate, won't do): final
@@ -259,23 +255,24 @@ file changes in the same PR as the work**, and merging the PR is what lands
 
 ### Releases and milestones
 
-A milestone is a **goal**: a set of tasks that together deliver one outcome. On a
-package repo its title is `v0.N <goal>` (`v0.6 backlog-workflow`): the prefix names
-the release the goal is **targeted** at, so every surface that shows the title shows
-the plan, and the goal is the outcome. The board and `milestone list` order
-milestones by ID (creation order), not by title, so the prefix does not sort lanes.
-The prefix is a target, not a promise — release-please computes the real version
-from the squash titles, and one `feature` task turns a planned `v0.5.1` into
-`v0.6.0` — so the closed milestone carries the real tag (below). A goal that slips
-to a later release costs one `backlog milestone rename "v0.6 <goal>" "v0.7 <goal>"`;
-the ID is kept, so no task file changes (the CLI still prints `Updated N local
-tasks`, but writes nothing to them). On a continuous repo, and for `maintenance`,
-the title is the bare goal.
+A milestone is a **goal**: a set of tasks that together deliver one outcome, and its
+title states the goal and nothing else (`agent-identity`, `harness-guards-and-ci`).
+The release it ships in is **not** in the title. The user's decision of 2026-10-20
+retired the `v0.N <goal>` prefix the 2026-10-19 rule had asked for: a goal is
+sometimes released ahead of or behind the version a prefix would have named, so the
+prefix read as a plan the release machinery could break, while the fact worth keeping
+— the tag that actually shipped — is recorded on the milestone when it closes (below).
+Nothing depended on the prefix for ordering: the board and `milestone list` order
+milestones by ID (creation order), not by title. A goal that slips to a later release
+now costs no rename at all. Two archived milestones keep a tag in their title —
+`v0.7 backup-and-custody (omp-home-v0.7.0)` and `v0.6 backlog-workflow
+(omp-home-v0.6.0)` — because they are records of what shipped and the tag there is the
+point; do not rename them.
 
-- **Create** with `backlog milestone add "v0.N <goal>" -d "<the outcome, one
+- **Create** with `backlog milestone add "<goal>" -d "<the outcome, one
   sentence>"` / `milestone_add`. The description cannot be edited afterwards through
   the CLI or MCP, so write it once, without placeholders.
-- **Every open task has a milestone.** Plan tasks into a goal with `-m "v0.N <goal>"` when
+- **Every open task has a milestone.** Plan tasks into a goal with `-m "<goal>"` when
   they are created. Work that serves no open goal — an unplanned fix, upkeep — goes
   in the standing `maintenance` milestone; when a goal fits better later, move it.
   `pb-open-pr` re-checks the milestone before the PR opens. Cards that shipped
@@ -291,12 +288,13 @@ the title is the bare goal.
 - **Release** (package profile): `pb-release` cuts a release when a milestone
   completes, when the release PR has waited past the time cap, or on request.
   The release that ships a milestone's last task closes it: `milestone rename
-  "v0.N <goal>" "v0.N <goal> (<tag>)"`, so the tag stays on the milestone and its
-  tasks even when it differs from the target, then `milestone archive`.
+  "<goal>" "<goal> (<tag>)"`, so the tag that actually shipped stays on the
+  milestone and its tasks, then `milestone archive`. That tag is the only place a
+  version appears on a milestone, and it is written once it is a fact.
 - **Continuous profile**: milestones are goals only. Merge is ship, so there is no
   release to tie them to; archive one when its last task merges.
 - **Abandoned goal**: when a goal is dropped or its tasks fit better elsewhere, move
-  each open task (`-m "v0.N <other goal>"` or `-m maintenance`), then
+  each open task (`-m "<other goal>"` or `-m maintenance`), then
   `backlog milestone remove "<title>"`; an empty milestone is archived, not
   deleted, so its ID and history stay.
 

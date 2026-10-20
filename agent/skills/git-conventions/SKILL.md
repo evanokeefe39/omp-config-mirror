@@ -99,9 +99,9 @@ Agent-Identity: harness=omp-config-mirror@omp-home-v0.6.0+1 commit=a1b2c3d4e5f6-
   appends `-dirty-<hash>`, the first 8 hex of the sha256 of `git diff HEAD`, so two
   dirty trees with the same changes carry the same identity and a different edit
   does not — untracked files are not part of it, matching `git describe --dirty`.
-  One computation serves both surfaces: `agent/scripts/harness-identity.ts`, which
-  the extension imports and `pb-land` runs directly to stamp the card it sets
-  `Done` (`skill://backlog-conventions`).
+  One computation: `agent/scripts/harness-identity.ts`, which
+  `agent/extensions/omp-identity.ts` imports, so a direct run of the script and the
+  trailer the hook writes cannot drift.
 - **Agent shells only.** The hook does nothing unless `OMPCODE` is set, so a human
   commit stays clean. A missing trailer means human, sync or unknown — never a
   guessed value.

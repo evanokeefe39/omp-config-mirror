@@ -121,6 +121,11 @@ CODE=(
   agent/commands
   agent/skills
   agent/scripts
+# evals — the runner's harbor job configs, added 2026-10-20 with /eval (OMP-47).
+# CODE, not ALLOW: a job names the task set, the environment and the harness config
+# to measure, so an edit to one is content that is on this machine only until it is
+# PR'd. In this repo the path is `~/.omp/evals/`.
+  evals
 # skills — root tree removed 2026-10-12 (SOLO-206); agent/skills is the only root
   plugins/package.json
 )
