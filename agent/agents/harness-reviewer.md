@@ -5,7 +5,7 @@ model: "@task"
 thinkingLevel: low
 tools: read, grep, glob, lsp, bash, eval, todo
 spawns: ""
-autoloadSkills: harness-engineering, omp-conventions, git-conventions
+autoloadSkills: harness-engineering-standards, omp-conventions, git-conventions
 output: {verdict: VERIFIED|NOT VERIFIED|INCONCLUSIVE, findings: [{severity: critical|high|medium|low, where: "file:line", evidence: string}], checks_run: [{check, command, result}], register_gaps: [string], proposed_register_rows: [string]}
 ---
 

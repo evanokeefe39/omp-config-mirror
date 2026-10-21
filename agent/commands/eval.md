@@ -1,5 +1,5 @@
 ---
-description: Benchmark an omp-harness config against an agent release on Harbor — pick a job from evals/, read its pins, get the size and cost approved, run it, and report what it measured. Use when asked to eval, to benchmark, to measure a release on agent work, or whether a harness change helped.
+description: Benchmark a harness config on Harbor. Use when asked to eval, to benchmark, to measure a release on agent work, or whether a harness change helped — pick a job from evals/, read its pins, get the size and cost approved, run it, and report what it measured.
 ---
 
 # /eval

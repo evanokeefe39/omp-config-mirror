@@ -1,5 +1,5 @@
 ---
-description: Plan the WHAT and WHY before the HOW. Iterating on the plan up front is far better value than steering through execution of a bad plan. When planning execution, plan for the machine you are — parallelize independent units (for correctness, not just speed) with a deliberate concurrency bound, use git worktrees AND plan the merge, and launch long-running/heavy work through hub or async rather than inline where a short timeout kills it. The advisor is a gentle guard rail for subagents during execution, never a driver of change and never a substitute for planning.
+description: Plan the WHAT and WHY before the HOW. Iterating on the plan up front is far better value than steering through execution of a bad plan. When planning execution, plan for the machine you are — parallelize independent units (for correctness, not just speed) with a deliberate concurrency bound, use git worktrees AND plan the merge, and launch long-running/heavy work through hub or async rather than inline where a short timeout kills it. Review is a dedicated reviewer subagent at a named boundary in the plan, never a per-turn advisor; the advisor stays off in both the global flag and the per-agent record.
 alwaysApply: true
 ---
 
@@ -68,13 +68,23 @@ human has to steer less while a plan they already approved is being carried out.
 - If execution repeatedly needs steering, the plan was under-specified. Fix the plan;
   do not add review pressure to the execution.
 
-**Default policy: advisor OFF.** Enable it per session (`/advisor on`) only when the work is
-**exploratory and the plan cannot be defined well up front** — the case where front-loaded
-planning genuinely cannot substitute for review. When the plan IS definable, a well-defined
-plan **that includes reviewers** is sufficient: spawn `reviewer` / `dlc-reviewer` /
-`security-reviewer` at the defined boundaries instead of paying a per-turn critic.
+**Policy: the advisor stays OFF, and review is a subagent step.** Review happens in the
+plan, at a named boundary, performed by a dedicated reviewer subagent — `reviewer`,
+`dlc-reviewer`, `security-reviewer`, or the domain reviewer for the artifact
+(`app-backend-`, `data-`, `ux-`, `iac-`, `harness-`, `doc-reviewer`). A reviewer costs
+tokens once and reports what it checked against; a per-turn critic bills on every tool
+round and cannot be held to a checklist.
 
-The dividing line is **"is the plan definable up front?"** — not "is the work risky?"
+- `/advisor on` is not the review mechanism for any session. Reaching for it because a
+  plan has no reviewer step is the anti-pattern below, not a fix.
+- The global config carries this in **two** places, and the second is the one that
+  bites: `advisor.enabled: false` **and** `task.agentAdvisor.task: "off"`. A legacy
+  `advisor.subagents: true` migrates into the per-agent record, which advises every
+  subagent spawned by the bundled `task` agent regardless of the global flag. Measured
+  2026-10-21: 32% of the day's requests were advisor calls while `advisor.enabled` read
+  false. Check both before concluding the advisor is off.
+
+The dividing line is **"does the plan name its reviewers?"** — not "is the work risky?"
 
 ## Anti-patterns this rule rejects
 

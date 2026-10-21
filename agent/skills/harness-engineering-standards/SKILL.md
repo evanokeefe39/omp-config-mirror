@@ -1,9 +1,9 @@
 ---
-name: harness-engineering
+name: harness-engineering-standards
 description: "Extend a coding harness — its rules, skills, agents, hooks, commands, extensions and settings — with native-first research, a fresh-process proof and a recoverable landing. Use when a change touches ~/.omp/agent/, a project's .omp/, or a repo a harness ships from."
 ---
 
-# harness-engineering
+# harness-engineering-standards
 
 Harness work differs from application work in one way that shapes every step here:
 **the artifact is the tool you are using.** A broken web app is a broken page; a

@@ -1,6 +1,6 @@
 ---
 name: eval
-description: "Runs an omp harness config against an agent release on Harbor and reports what the result was measured against. Use when a trial is to be run, when a release's effect on agent work needs measuring, or when a result has to name a release anyone can re-fetch."
+description: "Benchmark a harness config on Harbor. Use when a trial is to be run, a release's effect on agent work measured, or a result compared — runs an eval trial and records what the result measured."
 ---
 
 # eval
@@ -33,7 +33,10 @@ editing those lines in one file. Nothing resolves a tag at run time.
 | job | environment | what it is |
 |---|---|---|
 | `omp-install-smoke.yaml` | docker | the cheapest real probe: build a task image, install Bun and omp, stop. No model spend, no agent run, no verifier |
-| `omp-mirror-config.yaml` | daytona | a published config release measured on two ade-bench tasks. The job to cite or publish a result from |
+| `omp-mirror-config.yaml` | daytona | a published config release measured on two ade-bench tasks, the job to cite or publish a result from |
+| `omp-mirror-config-slice10.yaml` | daytona | the same pins on 10 ade-bench tasks at the full suite's memory and concurrency — the derisk step before the full run |
+| `omp-mirror-config-full.yaml` | daytona | the full ade-bench suite on those pins: 45 tasks at 4096 MB, concurrency 2 |
+| `omp-mirror-config-heavy.yaml` | daytona | the full suite's 8 GiB tier: the 2 tasks that OOM-kill at 4096, run one at a time |
 | `omp-baseline-ade-bench.yaml` | docker | the same two ade-bench tasks on omp's *bundled defaults*, with no `config_dir` at all. Run beside the job above, the pair isolates what a bootstrapped `~/.omp` adds |
 | `omp-data-eng-bench-fast30.yaml` | docker | the 30-task slice of `Snowflake-Labs/data-eng-bench`, reached over git |
 
@@ -167,5 +170,6 @@ neither claims more about the agent's work than that metric measures.
 
 `agent/commands/eval.md` (the `/eval` runbook),
 `agent/skills/eval/references/benchmarks.md` (the curated dataset shortlist),
-`evals/*.yaml` (the jobs), and the run's own directory under
-`<cwd>/.harness-eval/harbor/`.
+`evals/*.yaml` (the jobs), `agent/docs/eval-runs.md` (the run journal — one row per run,
+with the pins and the numbers, so a result outlives the card that asked for it), and the
+run's own directory under `<cwd>/.harness-eval/harbor/`.

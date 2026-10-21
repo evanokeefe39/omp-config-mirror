@@ -96,7 +96,10 @@ task:
     enabled: true
     commits: ai
   agentAdvisor:
-    task: "on"
+    # "off" set 2026-10-21: the migrated advisor.subagents value ("on", 2026-09-22)
+    # advised every subagent spawned by the bundled task agent no matter what
+    # advisor.enabled said. Kept explicit so the next /agents toggle is deliberate.
+    task: "off"
   enableEffort: true
 exa:
   enabled: false

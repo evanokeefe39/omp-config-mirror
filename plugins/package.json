@@ -1,5 +1,7 @@
 {
   "name": "omp-plugins",
   "private": true,
-  "dependencies": {}
+  "dependencies": {
+    "pi-intercom": "npm:pi-intercom@^0.18.0"
+  }
 }

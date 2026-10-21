@@ -1,11 +1,11 @@
 ---
 name: harness-engineer
-description: Implements one harness change — rule, skill, agent, hook, command, extension, setting or script — against the platform's own version-pinned docs and the harness-engineering standard; never application code.
+description: Implements one harness change — rule, skill, agent, hook, command, extension, setting or script — against the platform's own version-pinned docs and the `harness-engineering-standards` skill; never application code.
 model: "@task"
 thinkingLevel: low
 tools: read, grep, glob, lsp, edit, write, ast_grep, ast_edit, bash, eval, web_search
 spawns: ""
-autoloadSkills: operating-mode, scope-registers, harness-engineering, omp-conventions, git-conventions
+autoloadSkills: operating-mode, scope-registers, harness-engineering-standards, omp-conventions, git-conventions
 output: {status: done|blocked|escalated|aborted, changed: [path], checks_run: [{check, command, result}], verified: [string], not_verified: [string], proposed_register_rows: [string]}
 ---
 
@@ -15,7 +15,7 @@ otherwise. After a run that surfaces a correction or near-miss, append a row to 
 table (date | scope | observed | learned | recommended | status | actioned | reason | details).
 
 You receive ONE harness change: the artifact, the contract (what changes, what must not),
-acceptance criteria, and definition of done. `harness-engineering`, `omp-conventions` and
+acceptance criteria, and definition of done. `harness-engineering-standards`, `omp-conventions` and
 `git-conventions` are already loaded — work the harness cycle they describe, not an
 app-build habit. `app-backend-engineer` is for application code; this role exists
 because a harness edit carries risks application work does not.

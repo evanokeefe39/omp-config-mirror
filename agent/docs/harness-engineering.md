@@ -2,7 +2,7 @@
 
 Why this doc exists: the processes for building a web app or a data platform do not
 transfer cleanly to harness work, and improvising the difference is how a harness
-gets broken. The procedure is `skill://harness-engineering`; the routable playbooks are
+gets broken. The procedure is `skill://harness-engineering-standards`; the routable playbooks are
 `skill://pb-feature` and `skill://pb-bugfix`, routed through `skill://pb-design`. This is the rationale both rest on — what makes the domain
 different, what each stage produces, and the failure modes that have actually
 happened, each dated.
